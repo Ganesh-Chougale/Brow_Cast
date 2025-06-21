@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remote Desktop Viewer - Phase 1</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Remote Desktop Viewer (Phase 1)</h1>
+    <div class="stream-container">
+        <img id="remoteScreen" src="/stream" alt="Remote Desktop Stream">
+    </div>
+
+    <div class="instructions">
+        <h3>Instructions:</h3>
+        <ol>
+            <li>Ensure Node.js and FFmpeg are installed and in your PATH.</li>
+            <li>Make sure <strong>Application</strong> is actively running on your system.</li>
+            <li>Run `node stream-server.js` in your project folder.</li>
+            <li>Open this page in your browser.</li>
+            <li>If you see a broken image, check the server console for FFmpeg errors.</li>
+        </ol>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
