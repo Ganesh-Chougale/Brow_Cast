@@ -15,16 +15,16 @@ const supportedExtensions = {
     '.php': 'php',
     '.sh': 'bash',
     '.cs': 'csharp',
-    '.css': 'css'
-    // '.txt': 'text'
+    '.css': 'css',
+    '.txt': 'text',
+    '.h': 'cpp' // treating .h files as cpp
 };
 
 // Ignored files and folders
 const ignoredFiles = [
-    '.angular', '.vscode', 'node_modules', '.editorconfig', '.gitignore', 'Migrations', 'Debug', 'test',
+    '.angular', '.vscode', 'node_modules', '.editorconfig', '.gitignore', 'Migrations', 'Debug', 'test', 'libs',
     'angular.json', 'package-lock.json', 'package.json', 'README.md', 'Dependencies', 'Connected Services',
-    'tsconfig.app.json', 'tsconfig.json', 'tsconfig.spec.json', 'cS.js', 'zzz.md', '.mvn', '.settings',
-    'build'
+    'tsconfig.app.json', 'tsconfig.json', 'tsconfig.spec.json', 'cS.js', 'zzz.md', '.mvn', '.settings', 'build'
 ];
 
 let processedFiles = 0;
@@ -46,26 +46,32 @@ function walkDir(dir, callback) {
     });
 }
 
-// Remove excessive empty lines
+// One line Allowed
+// function removeExcessiveEmptyLines(content) {
+//     return content
+//         .replace(/\r\n/g, '\n')                     // Normalize Windows line endings
+//         .split('\n')
+//         .reduce((acc, line) => {
+//             const isEmpty = line.trim() === '';
+//             const lastLineEmpty = acc.length > 0 && acc[acc.length - 1].trim() === '';
+//             if (isEmpty && lastLineEmpty) return acc; // skip multiple empties
+//             acc.push(line);
+//             return acc;
+//         }, [])
+//         .join('\n')
+//         .trim();
+// }
+
+// No Line Allowed
 function removeExcessiveEmptyLines(content) {
-    const lines = content.split('\n');
-    let newContent = '';
-    let emptyLineCount = 0;
-
-    lines.forEach(line => {
-        if (line.trim() === '') {
-            emptyLineCount++;
-            if (emptyLineCount <= 2) {
-                newContent += '\n';
-            }
-        } else {
-            emptyLineCount = 0;
-            newContent += line + '\n';
-        }
-    });
-
-    return newContent.trim();
+    return content
+        .replace(/\r\n/g, '\n')                 // Normalize line endings
+        .split('\n')
+        .filter(line => line.trim() !== '')     // Remove all blank or whitespace-only lines
+        .join('\n')
+        .trim();
 }
+
 
 // Strip comments from code based on language
 function stripComments(content, lang) {
@@ -83,7 +89,7 @@ function stripComments(content, lang) {
             return content
                 .replace(/\/\/.*$/gm, '')                   // single-line //
                 .replace(/\/\*[\s\S]*?\*\//gm, '');         // multi-line /* */
-        
+
         case 'python':
         case 'ruby':
         case 'bash':
@@ -114,18 +120,15 @@ function stripComments(content, lang) {
                 .replace(/\/\*[\s\S]*?\*\//gm, '');           // /* comment */
 
         case 'json':
-            return content; // No official comment syntax
-
         case 'markdown':
         case 'md':
         case 'txt':
-            return content; // Usually no code comments
+            return content; // No comment removal
 
         default:
-            return content; // Safe fallback
+            return content;
     }
 }
-
 
 // Summary generator
 function generateSummary(root, selectedDirs) {
@@ -173,6 +176,7 @@ function generateSummary(root, selectedDirs) {
 
             console.log(`Processing: ${relativeFilePath}`);
 
+
             // Strip comments then clean blank lines
             let cleanedContent = stripComments(content, lang);
             cleanedContent = removeExcessiveEmptyLines(cleanedContent);
@@ -196,6 +200,3 @@ function generateSummary(root, selectedDirs) {
 const rootDir = process.cwd();
 const selectedDirs = process.argv.slice(2);
 generateSummary(rootDir, selectedDirs);
-
-// relative path: node .\cs.js .\src\app
-// absolute path (pass path as string): node .\cs.js "C:\Users\RaSkull\Desktop\Code"
