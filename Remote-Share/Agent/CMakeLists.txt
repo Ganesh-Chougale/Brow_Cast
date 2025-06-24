@@ -13,7 +13,6 @@ if(NOT Boost_FOUND)
 endif()
 message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost Libraries: ${Boost_LIBRARIES}")
-
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 ExternalProject_Add(libjpeg-turbo

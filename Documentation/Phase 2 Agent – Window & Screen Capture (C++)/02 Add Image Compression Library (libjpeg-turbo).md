@@ -600,4 +600,10 @@ private:
     static BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam);
     static std::vector<WindowInfo>* s_currentWindowsList;
 };
-```
+```  
+### 4. Build project again  
+```bash
+# Remote-Share\Agent\build
+cmake -G "MinGW Makefiles" ..
+mingw32-make
+```  
