@@ -658,22 +658,48 @@ const http = require('http');
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-wss.on('connection', ws => {
-    console.log('Client connected');
-    ws.on('message', message => {
-        console.log(`Received: ${message}`);
-        ws.send(`Echo: ${message}`); 
-    });
-    ws.on('close', () => {
-        console.log('Client disconnected');
-    });
-    ws.on('error', error => {
-        console.error('WebSocket error:', error);
-    });
-});
 const PORT = process.env.PORT || 8080;
+app.use(express.static('../Web')); 
+const webClients = new Set();
+let agentWs = null; 
+wss.on('connection', ws => {
+    if (!agentWs) {
+        agentWs = ws;
+        console.log('Client connected (Agent)');
+        ws.on('message', message => {
+            for (const client of webClients) {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(message); 
+                }
+            }
+        });
+        ws.on('close', () => {
+            console.log('Client (Agent) disconnected');
+            agentWs = null; 
+        });
+        ws.on('error', error => {
+            console.error('WebSocket error with Agent:', error);
+            agentWs = null;
+        });
+    } else {
+        webClients.add(ws);
+        console.log('Web client connected');
+        ws.on('close', () => {
+            console.log('Web client disconnected');
+            webClients.delete(ws); 
+        });
+        ws.on('error', error => {
+            console.error('WebSocket error with Web Client:', error);
+            webClients.delete(ws);
+        });
+        ws.on('message', message => {
+            console.log('Received message from web client:', message.toString());
+        });
+    }
+});
 server.listen(PORT, () => {
-    console.log(`Signaling server listening on port ${PORT}`);
+    console.log(`HTTP and WebSocket server listening on port ${PORT}`);
+    console.log(`Access web client at http:
 });
 ```
 
@@ -696,7 +722,41 @@ Remote-Share\Web\index.html:
 
 Remote-Share\Web\script.js:
 ```js
-
+document.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('remoteCanvas');
+    const ctx = canvas.getContext('2d');
+    const wsUrl = `ws:
+    const ws = new WebSocket(wsUrl);
+    ws.onopen = () => {
+        console.log('WebSocket connection established with server.');
+    };
+    ws.onmessage = event => {
+        try {
+            const message = JSON.parse(event.data);
+            if (message.type === 'frame' && message.image) {
+                const img = new Image();
+                img.onload = () => {
+                    canvas.width = message.width;
+                    canvas.height = message.height;
+                    ctx.drawImage(img, 0, 0, message.width, message.height);
+                };
+                img.src = `data:image/jpeg;base64,${message.image}`;
+            }
+        } catch (error) {
+            console.error('Error parsing or processing WebSocket message:', error);
+        }
+    };
+    ws.onclose = () => {
+        console.log('WebSocket connection closed.');
+    };
+    ws.onerror = error => {
+        console.error('WebSocket error:', error);
+    };
+    function resizeCanvas() {
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+});
 ```
 
 Remote-Share\Web\style.css:
