@@ -604,6 +604,7 @@ private:
 ### 4. Build project again  
 ```bash
 # Remote-Share\Agent\build
-cmake -G "MinGW Makefiles" ..
-mingw32-make
+# cmake -G "MinGW Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make .. --trace-expand
+cmake -G "MinGW Makefiles" -DCMAKE_MAKE_PROGRAM=mingw32-make ..
+mingw32-make VERBOSE=1
 ```  

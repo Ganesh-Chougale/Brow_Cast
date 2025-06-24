@@ -1,33 +1,45 @@
 cmake_minimum_required(VERSION 3.10)
-include(ExternalProject)
-include_directories(C:/msys64/mingw64/include)
 project(RemoteShareAgent CXX)
+
+# Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-# set(BOOST_ROOT "C:/local/boost_1_88_0")
-# set(Boost_USE_STATIC_LIBS ON)
-# set(Boost_USE_MULTITHREADED ON)
-# set(Boost_USE_STATIC_RUNTIME OFF)
-set(Boost_DEBUG ON)  # Enable debug output - useful for troubleshooting Boost finds
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Set Boost debug output
+set(Boost_DEBUG ON)
+
+# Find dependencies
 find_package(Boost 1.78.0 REQUIRED COMPONENTS thread system)
-find_package(nlohmann_json 3.11.2 REQUIRED)
-if(NOT Boost_FOUND)
-    message(FATAL_ERROR "Boost is required but could not be found at ${BOOST_ROOT}")
+
+# Find libjpeg-turbo from system paths
+find_path(JPEG_INCLUDE_DIR jpeglib.h PATHS /mingw64/include)
+find_library(JPEG_LIBRARY NAMES jpeg libjpeg PATHS /mingw64/lib)
+find_library(TURBOJPEG_LIBRARY NAMES turbojpeg libturbojpeg PATHS /mingw64/lib)
+
+if(NOT JPEG_INCLUDE_DIR OR NOT JPEG_LIBRARY OR NOT TURBOJPEG_LIBRARY)
+    message(FATAL_ERROR "libjpeg-turbo not found. Please install it with: pacman -S mingw-w64-x86_64-libjpeg-turbo")
+else()
+    message(STATUS "Found libjpeg include: ${JPEG_INCLUDE_DIR}")
+    message(STATUS "Found libjpeg library: ${JPEG_LIBRARY}")
+    message(STATUS "Found turbojpeg library: ${TURBOJPEG_LIBRARY}")
+    
+    add_library(jpeg STATIC IMPORTED)
+    set_target_properties(jpeg PROPERTIES
+        IMPORTED_LOCATION ${JPEG_LIBRARY}
+        INTERFACE_INCLUDE_DIRECTORIES ${JPEG_INCLUDE_DIR}
+    )
+    
+    add_library(turbojpeg STATIC IMPORTED)
+    set_target_properties(turbojpeg PROPERTIES
+        IMPORTED_LOCATION ${TURBOJPEG_LIBRARY}
+        INTERFACE_INCLUDE_DIRECTORIES ${JPEG_INCLUDE_DIR}
+    )
 endif()
-message(STATUS "Found Boost: ${Boost_INCLUDE_DIRS}")
-message(STATUS "Boost Libraries: ${Boost_LIBRARIES}")
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
-ExternalProject_Add(libjpeg-turbo
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/libjpeg-turbo-main
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/libjpeg-turbo-install
-        -DCMAKE_INSTALL_LIBDIR=lib  # <--- ADDED: Ensures libs go into 'lib'
-    BUILD_BYPRODUCTS
-        ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/jpeg.lib
-        ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/turbojpeg.lib # <--- ADDED: For turbojpeg library
-)
-include_directories(${CMAKE_BINARY_DIR}/libjpeg-turbo-install/include)
+
+find_package(nlohmann_json 3.11.2 REQUIRED)
+
+# Set source files
 set(AGENT_SRCS
     src/main.cpp
     src/CaptureManager.cpp
@@ -35,16 +47,32 @@ set(AGENT_SRCS
     src/WebSocketClient.cpp
     src/WindowEnumerator.cpp
 )
+
+# Create executable
 add_executable(RemoteShareAgent ${AGENT_SRCS})
-target_link_libraries(RemoteShareAgent
-    PRIVATE
-        ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/jpeg.lib
-        ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/turbojpeg.lib
-        ${Boost_LIBRARIES}
-        nlohmann_json::nlohmann_json
-        Gdiplus.lib           # For GDI+ operations (still used for now, will remove later if fully on libjpeg-turbo)
-        ws2_32                # Windows Sockets (networking)
-        User32.lib            # User Interface services
-        Gdi32.lib             # Graphics Device Interface services
+
+# Set include directories
+target_include_directories(RemoteShareAgent PRIVATE
+    ${Boost_INCLUDE_DIRS}
+    ${JPEG_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    C:/msys64/mingw64/include
 )
-target_include_directories(RemoteShareAgent PRIVATE ${Boost_INCLUDE_DIRS})
+
+# Link libraries
+target_link_libraries(RemoteShareAgent PRIVATE
+    jpeg
+    turbojpeg
+    ${Boost_LIBRARIES}
+    nlohmann_json::nlohmann_json
+    Gdiplus.lib
+    ws2_32
+    User32.lib
+    Gdi32.lib
+)
+
+# Add compile definitions if needed
+target_compile_definitions(RemoteShareAgent PRIVATE
+    $<$<CONFIG:Debug>:DEBUG>
+)

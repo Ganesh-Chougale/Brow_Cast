@@ -10,6 +10,7 @@ pacman -S mingw-w64-x86_64-cmake
 pacman -S mingw-w64-x86_64-toolchain
 pacman -S mingw-w64-x86_64-asio
 pacman -S mingw-w64-x86_64-nlohmann-json
+pacman -S mingw-w64-x86_64-libjpeg-turbo
 ```
 run these commands  
 
