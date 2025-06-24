@@ -8,6 +8,8 @@ class ImageProcessor {
 public:
     ImageProcessor();
     ~ImageProcessor();
+    static void InitializeCompressor();
+    static void ShutdownCompressor();
     static std::vector<uint8_t> CompressToJpeg(const std::vector<uint8_t>& pixelData, int width, int height, int quality = 80);
     static std::string EncodeToBase64(const std::vector<uint8_t>& binaryData);
 private:

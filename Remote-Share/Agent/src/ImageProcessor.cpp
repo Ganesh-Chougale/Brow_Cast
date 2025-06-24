@@ -2,11 +2,14 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+
 tjhandle ImageProcessor::s_jpegCompressor = nullptr;
+
 static const std::string base64_chars =
              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
              "abcdefghijklmnopqrstuvwxyz"
              "0123456789+/";
+
 std::string ImageProcessor::base64_encode_impl(const std::vector<uint8_t>& in) {
     std::string out;
     int val = 0, valb = -6;
@@ -26,28 +29,31 @@ std::string ImageProcessor::base64_encode_impl(const std::vector<uint8_t>& in) {
     }
     return out;
 }
+
 ImageProcessor::ImageProcessor() {
 }
+
 ImageProcessor::~ImageProcessor() {
 }
+
 void ImageProcessor::InitializeCompressor() {
     if (!s_jpegCompressor) {
         s_jpegCompressor = tjInitCompress();
         if (!s_jpegCompressor) {
-            const char* error_str = tjGetErrorStr(nullptr);
+            const char* error_str = tjGetErrorStr();
             std::cerr << "Failed to initialize libjpeg-turbo compressor: " << (error_str ? error_str : "Unknown error") << std::endl;
             throw std::runtime_error("Failed to initialize libjpeg-turbo compressor.");
         }
-        std::cout << "libjpeg-turbo compressor initialized." << std::endl;
     }
 }
+
 void ImageProcessor::ShutdownCompressor() {
     if (s_jpegCompressor) {
         tjDestroy(s_jpegCompressor);
         s_jpegCompressor = nullptr;
-        std::cout << "libjpeg-turbo compressor shutdown." << std::endl;
     }
 }
+
 std::vector<uint8_t> ImageProcessor::CompressToJpeg(const std::vector<uint8_t>& pixelData, int width, int height, int quality) {
     std::vector<uint8_t> jpegData;
     if (!s_jpegCompressor) {
@@ -74,7 +80,7 @@ std::vector<uint8_t> ImageProcessor::CompressToJpeg(const std::vector<uint8_t>& 
                              TJFLAG_FASTDCT         
                             );
     if (result != 0) {
-        const char* error_str = tjGetErrorStr(s_jpegCompressor);
+        const char* error_str = tjGetErrorStr();
         std::cerr << "Failed to compress image with libjpeg-turbo: " << (error_str ? error_str : "Unknown error") << std::endl;
         if (jpegBuf) { 
             tjFree(jpegBuf);
@@ -85,6 +91,7 @@ std::vector<uint8_t> ImageProcessor::CompressToJpeg(const std::vector<uint8_t>& 
     tjFree(jpegBuf);
     return jpegData;
 }
+
 std::string ImageProcessor::EncodeToBase64(const std::vector<uint8_t>& binaryData) {
     return base64_encode_impl(binaryData);
 }
