@@ -5,6 +5,7 @@
 #include <thread>     
 #include <atomic>     
 #define ASIO_STANDALONE 
+#include <asio.hpp>
 #include <websocketpp/config/asio_no_tls_client.hpp> 
 #include <websocketpp/client.hpp>
 #include <websocketpp/common/thread.hpp> 

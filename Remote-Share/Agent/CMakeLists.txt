@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
+include(ExternalProject)
+include_directories(C:/msys64/mingw64/include)
 project(RemoteShareAgent CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
-set(BOOST_ROOT "C:/local/boost_1_88_0")
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
+# set(BOOST_ROOT "C:/local/boost_1_88_0")
+# set(Boost_USE_STATIC_LIBS ON)
+# set(Boost_USE_MULTITHREADED ON)
+# set(Boost_USE_STATIC_RUNTIME OFF)
 set(Boost_DEBUG ON)  # Enable debug output - useful for troubleshooting Boost finds
-find_package(Boost 1.88.0 REQUIRED COMPONENTS thread system)
+find_package(Boost 1.78.0 REQUIRED COMPONENTS thread system)
+find_package(nlohmann_json 3.11.2 REQUIRED)
 if(NOT Boost_FOUND)
     message(FATAL_ERROR "Boost is required but could not be found at ${BOOST_ROOT}")
 endif()
@@ -38,6 +41,7 @@ target_link_libraries(RemoteShareAgent
         ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/jpeg.lib
         ${CMAKE_BINARY_DIR}/libjpeg-turbo-install/lib/turbojpeg.lib
         ${Boost_LIBRARIES}
+        nlohmann_json::nlohmann_json
         Gdiplus.lib           # For GDI+ operations (still used for now, will remove later if fully on libjpeg-turbo)
         ws2_32                # Windows Sockets (networking)
         User32.lib            # User Interface services
