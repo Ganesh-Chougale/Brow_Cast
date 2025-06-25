@@ -62,10 +62,16 @@ void WebSocketClient::connect() {
     client::connection_ptr con = m_client.get_connection(m_uri, ec);
     if (ec) {
         std::cerr << "Could not create connection because: " << ec.message() << std::endl;
-        throw websocketpp::exception(ec.message()); // Rethrow as websocketpp exception
+        throw websocketpp::exception(ec.message());
     }
 
+    // Set WebSocket protocol version and other headers
+    con->append_header("Sec-WebSocket-Protocol", "remote-share");
+    con->append_header("Origin", "http://localhost:8080");
+    con->add_subprotocol("remote-share");
+
     // Connect the connection
+    m_hdl = con->get_handle();
     m_client.connect(con);
 
     // Start the ASIO io_service in a separate thread if not already running
@@ -73,13 +79,13 @@ void WebSocketClient::connect() {
         m_thread = websocketpp::lib::thread([&]() {
             try {
                 m_client.run();
+                std::cerr << "WebSocket client run loop ended. Attempting to reconnect..." << std::endl;
+                // Add reconnection logic here if needed
             } catch (const websocketpp::exception& e) {
                 std::cerr << "WebSocket client run exception: " << e.what() << std::endl;
             } catch (const std::exception& e) {
-                // Catch any other standard exceptions
                 std::cerr << "General exception in WebSocket client run thread: " << e.what() << std::endl;
             } catch (...) {
-                // Catch any other unknown exceptions
                 std::cerr << "Unknown exception in WebSocket client run thread." << std::endl;
             }
         });
@@ -144,12 +150,20 @@ void WebSocketClient::onMessage(websocketpp::connection_hdl hdl, client::message
 }
 
 void WebSocketClient::onFail(websocketpp::connection_hdl hdl) {
-    client::connection_ptr con = m_client.get_con_from_hdl(hdl);
-    std::cerr << "WebSocket connection failed: " << con->get_ec().message() << std::endl;
-    m_connected.store(false); // Update state
-
-    // Unify connection loss handling: call onCloseHandler
+    m_connected = false;
+    std::cerr << "WebSocket connection failed" << std::endl;
     if (m_onCloseHandler) {
         m_onCloseHandler();
+    }
+    
+    // Attempt to reconnect after a delay
+    static int reconnectAttempts = 0;
+    int delay = std::min(30, ++reconnectAttempts) * 1000; // Exponential backoff up to 30s
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    
+    try {
+        connect();
+    } catch (const std::exception& e) {
+        std::cerr << "Reconnection failed: " << e.what() << std::endl;
     }
 }

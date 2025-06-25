@@ -312,90 +312,89 @@ private:
 Remote-Share\Agent\src\main.cpp:
 ```cpp
 #include "WebSocketClient.h"
-#include "CaptureManager.h"
-#include "ImageProcessor.h"
-#include "WindowEnumerator.h"
-#include <iostream>
-#include <chrono>
-#include <thread>
-#include <vector>
-#include <Windows.h>
-#include <nlohmann/json.hpp>
-int main(int argc, char* argv[]) {
-    try {
-        ImageProcessor::InitializeCompressor();
-    } catch (const std::runtime_error& e) {
-        std::cerr << "Error initializing ImageProcessor: " << e.what() << std::endl;
-        return 1;
-    }
-    std::string server_url = "ws:
-    WebSocketClient ws_client(server_url);
-    ws_client.setOnOpenHandler([]() {
-        std::cout << "WebSocket connected to server." << std::endl;
-    });
-    ws_client.setOnCloseHandler([]() {
-        std::cerr << "WebSocket disconnected from server. Attempting reconnect (not implemented yet)..." << std::endl;
-    });
-    ws_client.setOnMessageHandler([](const std::string& message) {
-        std::cout << "Received message from server: " << message << std::endl;
-    });
-    try {
-        ws_client.connect();
-    } catch (const std::exception& e) {
-        std::cerr << "Initial WebSocket connection setup failed: " << e.what() << std::endl;
-        ImageProcessor::ShutdownCompressor(); 
-        return 1;
-    }
-    std::cout << "Waiting for WebSocket connection to establish..." << std::endl;
-    int connect_timeout_ms = 5000;
-    int elapsed_ms = 0;
-    while (!ws_client.isConnected() && elapsed_ms < connect_timeout_ms) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        elapsed_ms += 100;
-    }
-    if (!ws_client.isConnected()) {
-        std::cerr << "Failed to connect to WebSocket server within timeout. Ensure Node.js server is running on " << server_url << std::endl;
-        ImageProcessor::ShutdownCompressor(); 
-        return 1;
-    }
-    CaptureManager captureManager;
-    std::vector<WindowInfo> availableWindows = WindowEnumerator::EnumerateVisibleWindows();
-    HWND selected_hwnd = WindowEnumerator::SelectWindowFromList(availableWindows);
-    std::cout << "Starting screen sharing loop (press Ctrl+C to stop)..." << std::endl;
-    while (true) {
-        if (ws_client.isConnected()) {
-            int currentWidth = 0, currentHeight = 0;
-            std::vector<uint8_t> pixel_data;
-            if (selected_hwnd == NULL) {
-                pixel_data = captureManager.CaptureFullScreen(currentWidth, currentHeight);
-            } else {
-                pixel_data = captureManager.CaptureWindow(selected_hwnd, currentWidth, currentHeight);
-            }
-            if (!pixel_data.empty() && currentWidth > 0 && currentHeight > 0) {
-                std::vector<uint8_t> jpeg_data = ImageProcessor::CompressToJpeg(pixel_data, currentWidth, currentHeight, 80);
-                if (!jpeg_data.empty()) {
-                    std::string base64_image = ImageProcessor::EncodeToBase64(jpeg_data);
-                    nlohmann::json frame_msg;
-                    frame_msg["type"] = "frame";
-                    frame_msg["image"] = base64_image;
-                    frame_msg["width"] = currentWidth;
-                    frame_msg["height"] = currentHeight;
-                    ws_client.send(frame_msg.dump());
+    #include "CaptureManager.h"
+    #include "ImageProcessor.h"
+    #include "WindowEnumerator.h"
+    #include <iostream>
+    #include <chrono>
+    #include <thread>
+    #include <vector>
+    #include <Windows.h>
+    #include <nlohmann/json.hpp>
+    int main(int argc, char* argv[]) {
+        try {
+            ImageProcessor::InitializeCompressor();
+        } catch (const std::runtime_error& e) {
+            std::cerr << "Error initializing ImageProcessor: " << e.what() << std::endl;
+            return 1;
+        }
+        std::string server_url = "ws:
+        WebSocketClient ws_client(server_url);
+        ws_client.setOnOpenHandler([]() {
+            std::cout << "WebSocket connected to server." << std::endl;
+        });
+        ws_client.setOnCloseHandler([]() {
+            std::cerr << "WebSocket disconnected from server. Attempting reconnect..." << std::endl; 
+        });
+        ws_client.setOnMessageHandler([](const std::string& message) {
+            std::cout << "Received message from server: " << message << std::endl;
+        });
+        try {
+            ws_client.connect();
+        } catch (const std::exception& e) {
+            std::cerr << "Initial WebSocket connection setup failed: " << e.what() << std::endl;
+            ImageProcessor::ShutdownCompressor();
+            return 1;
+        }
+        std::cout << "Waiting for WebSocket connection to establish..." << std::endl;
+        int connect_timeout_ms = 5000;
+        int elapsed_ms = 0;
+        while (!ws_client.isConnected() && elapsed_ms < connect_timeout_ms) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            elapsed_ms += 100;
+        }
+        if (!ws_client.isConnected()) {
+            std::cerr << "Failed to connect to WebSocket server within timeout. Ensure Node.js server is running on " << server_url << std::endl;
+            ImageProcessor::ShutdownCompressor();
+            return 1;
+        }
+        CaptureManager captureManager;
+        std::vector<WindowInfo> availableWindows = WindowEnumerator::EnumerateVisibleWindows();
+        HWND selected_hwnd = WindowEnumerator::SelectWindowFromList(availableWindows);
+        std::cout << "Starting screen sharing loop (press Ctrl+C to stop)..." << std::endl;
+        while (true) {
+            if (ws_client.isConnected()) {
+                int currentWidth = 0, currentHeight = 0;
+                std::vector<uint8_t> pixel_data;
+                if (selected_hwnd == NULL) {
+                    pixel_data = captureManager.CaptureFullScreen(currentWidth, currentHeight);
                 } else {
-                     std::cerr << "Failed to compress image to JPEG." << std::endl;
+                    pixel_data = captureManager.CaptureWindow(selected_hwnd, currentWidth, currentHeight);
+                }
+                if (!pixel_data.empty() && currentWidth > 0 && currentHeight > 0) {
+                    std::vector<uint8_t> jpeg_data = ImageProcessor::CompressToJpeg(pixel_data, currentWidth, currentHeight, 80);
+                    if (!jpeg_data.empty()) {
+                        nlohmann::json frame_msg;
+                        frame_msg["type"] = "frame";
+                        frame_msg["image"] = ImageProcessor::EncodeToBase64(jpeg_data); 
+                        frame_msg["width"] = currentWidth;
+                        frame_msg["height"] = currentHeight;
+                        ws_client.send(frame_msg.dump());
+                    } else {
+                        std::cerr << "Failed to compress image to JPEG." << std::endl;
+                    }
+                } else {
+                    std::cerr << "Failed to capture pixel data or invalid dimensions (width: " << currentWidth << ", height: " << currentHeight << "). Skipping frame." << std::endl;
                 }
             } else {
-                std::cerr << "Failed to capture pixel data or invalid dimensions (width: " << currentWidth << ", height: " << currentHeight << "). Skipping frame." << std::endl;
+                std::cerr << "WebSocket not connected. Pausing frame sending." << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(2));
             }
-        } else {
-            std::cerr << "WebSocket not connected. Pausing frame sending." << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(2));
+            std::this_thread::sleep_for(std::chrono::milliseconds(66)); 
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(66)); 
+        ImageProcessor::ShutdownCompressor();
+        return 0;
     }
-    ImageProcessor::ShutdownCompressor();
-    return 0;
-}
 ```
 
 Remote-Share\Agent\src\WebSocketClient.cpp:
@@ -451,13 +450,18 @@ void WebSocketClient::connect() {
     client::connection_ptr con = m_client.get_connection(m_uri, ec);
     if (ec) {
         std::cerr << "Could not create connection because: " << ec.message() << std::endl;
-        throw websocketpp::exception(ec.message()); 
+        throw websocketpp::exception(ec.message());
     }
+    con->append_header("Sec-WebSocket-Protocol", "remote-share");
+    con->append_header("Origin", "http:
+    con->add_subprotocol("remote-share");
+    m_hdl = con->get_handle();
     m_client.connect(con);
     if (!m_thread.joinable()) {
         m_thread = websocketpp::lib::thread([&]() {
             try {
                 m_client.run();
+                std::cerr << "WebSocket client run loop ended. Attempting to reconnect..." << std::endl;
             } catch (const websocketpp::exception& e) {
                 std::cerr << "WebSocket client run exception: " << e.what() << std::endl;
             } catch (const std::exception& e) {
@@ -509,11 +513,18 @@ void WebSocketClient::onMessage(websocketpp::connection_hdl hdl, client::message
     }
 }
 void WebSocketClient::onFail(websocketpp::connection_hdl hdl) {
-    client::connection_ptr con = m_client.get_con_from_hdl(hdl);
-    std::cerr << "WebSocket connection failed: " << con->get_ec().message() << std::endl;
-    m_connected.store(false); 
+    m_connected = false;
+    std::cerr << "WebSocket connection failed" << std::endl;
     if (m_onCloseHandler) {
         m_onCloseHandler();
+    }
+    static int reconnectAttempts = 0;
+    int delay = std::min(30, ++reconnectAttempts) * 1000; 
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    try {
+        connect();
+    } catch (const std::exception& e) {
+        std::cerr << "Reconnection failed: " << e.what() << std::endl;
     }
 }
 ```
@@ -653,54 +664,86 @@ private:
 Remote-Share\Server\index.js:
 ```js
 const express = require('express');
-const WebSocket = require('ws');
-const http = require('http');
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-const PORT = process.env.PORT || 8080;
-app.use(express.static('../Web')); 
-const webClients = new Set();
-let agentWs = null; 
-wss.on('connection', ws => {
-    if (!agentWs) {
-        agentWs = ws;
-        console.log('Client connected (Agent)');
-        ws.on('message', message => {
-            for (const client of webClients) {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(message); 
-                }
+    const WebSocket = require('ws');
+    const http = require('http');
+    const path = require('path');
+    const app = express();
+    const server = http.createServer(app);
+    const wss = new WebSocket.Server({ server });
+    const PORT = process.env.PORT || 8080;
+    app.use(express.static(path.join(__dirname, '../Web')));
+    const clients = {
+        agent: null, 
+        viewers: new Set() 
+    };
+    wss.on('connection', (ws, req) => {
+        const isAgent = req.url === '/agent';
+        const isViewer = req.url === '/viewer';
+        if (isAgent) {
+            console.log('Agent connected');
+            if (clients.agent && clients.agent.readyState === WebSocket.OPEN) {
+                console.log('Another agent already connected. Closing new agent connection.');
+                ws.close(1008, 'Another agent is already connected.'); 
+                return;
+            }
+            clients.agent = ws; 
+            broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: true }));
+            ws.on('message', (message) => {
+                broadcastToViewers(message); 
+            });
+            ws.on('close', () => {
+                console.log('Agent disconnected');
+                clients.agent = null; 
+                broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: false }));
+            });
+            ws.on('error', (error) => {
+                console.error('Agent WebSocket error:', error);
+                clients.agent = null; 
+                broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: false }));
+            });
+        } else if (isViewer) {
+            console.log('Viewer connected');
+            clients.viewers.add(ws); 
+            if (clients.agent && clients.agent.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'agent_status', connected: true }));
+            } else {
+                ws.send(JSON.stringify({ type: 'agent_status', connected: false }));
+            }
+            ws.on('close', () => {
+                console.log('Viewer disconnected');
+                clients.viewers.delete(ws); 
+            });
+            ws.on('error', (error) => {
+                console.error('Viewer WebSocket error:', error);
+                clients.viewers.delete(ws); 
+            });
+        } else {
+            console.log(`Unknown connection attempt from: ${req.url}. Closing.`);
+            ws.close(1000, 'Unknown connection type'); 
+        }
+    });
+    function broadcastToViewers(message) {
+        clients.viewers.forEach((viewer) => {
+            if (viewer.readyState === WebSocket.OPEN) {
+                viewer.send(message);
             }
         });
-        ws.on('close', () => {
-            console.log('Client (Agent) disconnected');
-            agentWs = null; 
-        });
-        ws.on('error', error => {
-            console.error('WebSocket error with Agent:', error);
-            agentWs = null;
-        });
-    } else {
-        webClients.add(ws);
-        console.log('Web client connected');
-        ws.on('close', () => {
-            console.log('Web client disconnected');
-            webClients.delete(ws); 
-        });
-        ws.on('error', error => {
-            console.error('WebSocket error with Web Client:', error);
-            webClients.delete(ws);
-        });
-        ws.on('message', message => {
-            console.log('Received message from web client:', message.toString());
-        });
     }
-});
-server.listen(PORT, () => {
-    console.log(`HTTP and WebSocket server listening on port ${PORT}`);
-    console.log(`Access web client at http:
-});
+    process.on('SIGINT', () => {
+        console.log('Shutting down server...');
+        if (clients.agent) {
+            clients.agent.close();
+        }
+        clients.viewers.forEach(viewer => viewer.close());
+        server.close(() => {
+            console.log('Server shut down');
+            process.exit(0);
+        });
+    });
+    server.listen(PORT, () => {
+        console.log(`Server running on http:
+        console.log(`Web client available at http:
+    });
 ```
 
 Remote-Share\Web\index.html:
@@ -715,6 +758,7 @@ Remote-Share\Web\index.html:
 </head>
 <body>
     <canvas id="remoteCanvas"></canvas>
+    <img id="screenShareImage" style="max-width: 100%; height: auto; display: block; margin: auto;" alt="Remote Screen Share">
     <script src="./script.js"></script>
 </body>
 </html>
@@ -722,41 +766,111 @@ Remote-Share\Web\index.html:
 
 Remote-Share\Web\script.js:
 ```js
-document.addEventListener('DOMContentLoaded', () => {
-    const canvas = document.getElementById('remoteCanvas');
+const canvas = document.getElementById('remoteCanvas');
     const ctx = canvas.getContext('2d');
-    const wsUrl = `ws:
-    const ws = new WebSocket(wsUrl);
-    ws.onopen = () => {
-        console.log('WebSocket connection established with server.');
-    };
-    ws.onmessage = event => {
-        try {
-            const message = JSON.parse(event.data);
-            if (message.type === 'frame' && message.image) {
-                const img = new Image();
-                img.onload = () => {
-                    canvas.width = message.width;
-                    canvas.height = message.height;
-                    ctx.drawImage(img, 0, 0, message.width, message.height);
-                };
-                img.src = `data:image/jpeg;base64,${message.image}`;
-            }
-        } catch (error) {
-            console.error('Error parsing or processing WebSocket message:', error);
-        }
-    };
-    ws.onclose = () => {
-        console.log('WebSocket connection closed.');
-    };
-    ws.onerror = error => {
-        console.error('WebSocket error:', error);
-    };
     function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
     }
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-});
+    let ws; 
+    const statusOverlay = document.createElement('div');
+    statusOverlay.style.position = 'fixed';
+    statusOverlay.style.bottom = '10px';
+    statusOverlay.style.right = '10px';
+    statusOverlay.style.padding = '10px';
+    statusOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    statusOverlay.style.color = 'white';
+    statusOverlay.style.borderRadius = '5px';
+    statusOverlay.style.zIndex = '1000';
+    statusOverlay.textContent = 'Connecting...';
+    document.body.appendChild(statusOverlay);
+    function updateStatus(status) {
+        statusOverlay.textContent = status;
+    }
+    function connectWebSocket() {
+        updateStatus('Connecting...'); 
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = protocol + window.location.host + '/viewer'; 
+        ws = new WebSocket(wsUrl); 
+        ws.onopen = () => {
+            console.log('WebSocket connection established with server.');
+            updateStatus('Connected');
+            setTimeout(() => {
+                statusOverlay.style.transition = 'opacity 1s ease-out'; 
+                statusOverlay.style.opacity = '0'; 
+            }, 2000);
+        };
+        ws.onmessage = (event) => {
+            try {
+                let message;
+                if (event.data instanceof Blob) {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                        try {
+                            message = JSON.parse(reader.result);
+                            handleFrameMessage(message);
+                        } catch (e) {
+                            console.error('Error parsing Blob message:', e);
+                        }
+                    };
+                    reader.readAsText(event.data);
+                    return; 
+                } else {
+                    message = JSON.parse(event.data);
+                }
+                handleFrameMessage(message);
+            } catch (e) {
+                console.error('Error processing message:', e);
+            }
+        };
+        ws.onclose = () => {
+            console.log('WebSocket connection closed. Attempting to reconnect...');
+            updateStatus('Disconnected. Reconnecting...');
+            statusOverlay.style.opacity = '1'; 
+            setTimeout(connectWebSocket, 3000); 
+        };
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+    }
+    function handleFrameMessage(message) {
+        if (message.type === 'frame' && message.image) {
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                const canvasAspect = canvas.width / canvas.height;
+                const imgAspect = img.width / img.height;
+                let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+                if (imgAspect > canvasAspect) {
+                    drawHeight = canvas.height;
+                    drawWidth = drawHeight * imgAspect;
+                    offsetX = (canvas.width - drawWidth) / 2; 
+                } else {
+                    drawWidth = canvas.width;
+                    drawHeight = drawWidth / imgAspect;
+                    offsetY = (canvas.height - drawHeight) / 2; 
+                }
+                ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight); 
+            };
+            img.src = 'data:image/jpeg;base64,' + message.image; 
+        } else if (message.type === 'agent_status') {
+            if (message.connected) {
+                updateStatus('Agent Connected');
+                setTimeout(() => {
+                    statusOverlay.style.transition = 'opacity 1s ease-out';
+                    statusOverlay.style.opacity = '0';
+                }, 2000);
+            } else {
+                updateStatus('Agent Disconnected');
+                statusOverlay.style.opacity = '1'; 
+            }
+        } else {
+            console.log('Received message from server:', message);
+        }
+    }
+    window.addEventListener('DOMContentLoaded', connectWebSocket);
 ```
 
 Remote-Share\Web\style.css:
