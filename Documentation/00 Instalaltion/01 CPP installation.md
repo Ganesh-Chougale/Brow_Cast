@@ -11,6 +11,7 @@ pacman -S mingw-w64-x86_64-toolchain
 pacman -S mingw-w64-x86_64-asio
 pacman -S mingw-w64-x86_64-nlohmann-json
 pacman -S mingw-w64-x86_64-libjpeg-turbo
+pacman -S mingw-w64-x86_64-openssl
 ```
 run these commands  
 
