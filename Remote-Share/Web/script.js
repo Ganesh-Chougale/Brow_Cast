@@ -1,139 +1,320 @@
-    const canvas = document.getElementById('remoteCanvas');
-    const ctx = canvas.getContext('2d');
+// Global variables to be initialized after DOM is ready
+let connectButton;
+let sessionIdInput;
+let statusMessage;
+let remoteScreenCanvas;
+let loadingOverlay;
+let ctx;
 
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
+// WebSocket Variables
+let ws = null;
+let originalWidth = 0; // Stores the original width of the remote screen/window from agent
+let originalHeight = 0; // Stores the original height of the remote screen/window from agent
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
+// Dialog elements for IP input
+let ipDialog;
+let ipInputInDialog;
+let ipDialogConnectButton;
+let ipDialogStatusMessage;
 
-    let ws; // Declare ws here, will be assigned in connectWebSocket()
+/**
+ * Shows a modal dialog to get the server IP from the user.
+ * @param {function} callback - Function to call with the entered IP.
+ */
+function showIpInputDialog(callback) {
+    if (!ipDialog) {
+        // Create dialog elements if they don't exist
+        ipDialog = document.createElement('div');
+        ipDialog.id = 'ipDialog';
+        ipDialog.className = 'fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50';
+        ipDialog.innerHTML = `
+            <div class="bg-white p-6 rounded-lg shadow-xl text-center">
+                <h3 class="text-xl font-bold mb-4 text-gray-800">Enter Server IP Address</h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    The viewer could not connect to 'localhost'. Please enter the IP address of the machine running the Node.js server.
+                    (Check the server's console output for the IP address).
+                </p>
+                <input type="text" id="ipInputInDialog" placeholder="e.g., 192.168.1.100" 
+                       class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full mb-3">
+                <div id="ipDialogStatusMessage" class="text-sm text-red-600 mb-3"></div>
+                <button id="ipDialogConnectButton" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-md transition duration-300 ease-in-out w-full">
+                    Connect to IP
+                </button>
+            </div>
+        `;
+        document.body.appendChild(ipDialog);
 
-    // Create and append the status overlay element
-    const statusOverlay = document.createElement('div');
-    statusOverlay.style.position = 'fixed';
-    statusOverlay.style.bottom = '10px';
-    statusOverlay.style.right = '10px';
-    statusOverlay.style.padding = '10px';
-    statusOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    statusOverlay.style.color = 'white';
-    statusOverlay.style.borderRadius = '5px';
-    statusOverlay.style.zIndex = '1000';
-    statusOverlay.textContent = 'Connecting...';
-    document.body.appendChild(statusOverlay);
+        // Get references to dialog elements
+        ipInputInDialog = document.getElementById('ipInputInDialog');
+        ipDialogConnectButton = document.getElementById('ipDialogConnectButton');
+        ipDialogStatusMessage = document.getElementById('ipDialogStatusMessage');
 
-    // Function to update the text content of the status overlay
-    function updateStatus(status) {
-        statusOverlay.textContent = status;
-    }
-
-    function connectWebSocket() {
-        updateStatus('Connecting...'); // Set initial status when trying to connect
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // The web client now connects to the /viewer path on the WebSocket server.
-        const wsUrl = protocol + window.location.host + '/viewer'; 
-
-        ws = new WebSocket(wsUrl); // Initialize the WebSocket object
-
-        // Set up WebSocket event handlers AFTER the ws object is created
-        ws.onopen = () => {
-            console.log('WebSocket connection established with server.');
-            updateStatus('Connected');
-            // Fade out the status message after a delay
-            setTimeout(() => {
-                statusOverlay.style.transition = 'opacity 1s ease-out'; // Smooth transition
-                statusOverlay.style.opacity = '0'; // Make it disappear
-            }, 2000);
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                let message;
-                // Handle binary data (Blob) or text data from WebSocket
-                if (event.data instanceof Blob) {
-                    const reader = new FileReader();
-                    reader.onload = function() {
-                        try {
-                            message = JSON.parse(reader.result);
-                            handleFrameMessage(message);
-                        } catch (e) {
-                            console.error('Error parsing Blob message:', e);
-                        }
-                    };
-                    reader.readAsText(event.data);
-                    return; // Exit as processing is asynchronous
-                } else {
-                    message = JSON.parse(event.data);
-                }
-                handleFrameMessage(message);
-            } catch (e) {
-                console.error('Error processing message:', e);
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket connection closed. Attempting to reconnect...');
-            updateStatus('Disconnected. Reconnecting...');
-            statusOverlay.style.opacity = '1'; // Make status visible again
-            setTimeout(connectWebSocket, 3000); // Attempt to reconnect after 3 seconds
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            // The onclose handler will typically be called after onerror,
-            // so direct ws.close() call is often not needed here unless
-            // specific error recovery logic is required.
-        };
-    }
-
-    // Handles incoming messages, specifically frame data and agent status updates
-    function handleFrameMessage(message) {
-        if (message.type === 'frame' && message.image) {
-            const img = new Image();
-            img.onload = () => {
-                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear previous frame
-
-                // Calculate aspect ratios for fitting the image to the canvas
-                const canvasAspect = canvas.width / canvas.height;
-                const imgAspect = img.width / img.height;
-
-                let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-                if (imgAspect > canvasAspect) {
-                    // Image is wider relative to its height than the canvas
-                    // Fit by canvas height, calculate width
-                    drawHeight = canvas.height;
-                    drawWidth = drawHeight * imgAspect;
-                    offsetX = (canvas.width - drawWidth) / 2; // Center horizontally
-                } else {
-                    // Image is taller relative to its width than the canvas
-                    // Fit by canvas width, calculate height
-                    drawWidth = canvas.width;
-                    drawHeight = drawWidth / imgAspect;
-                    offsetY = (canvas.height - drawHeight) / 2; // Center vertically
-                }
-                ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight); // Draw the image
-            };
-            img.src = 'data:image/jpeg;base64,' + message.image; // Set image source from base64 data
-        } else if (message.type === 'agent_status') {
-            // Update status overlay based on agent connection status
-            if (message.connected) {
-                updateStatus('Agent Connected');
-                setTimeout(() => {
-                    statusOverlay.style.transition = 'opacity 1s ease-out';
-                    statusOverlay.style.opacity = '0';
-                }, 2000);
+        // Add event listener for connect button in dialog
+        ipDialogConnectButton.addEventListener('click', () => {
+            const ip = ipInputInDialog.value.trim();
+            if (ip) {
+                ipDialogStatusMessage.textContent = '';
+                callback(ip);
+                ipDialog.classList.add('hidden'); // Hide dialog on successful input
             } else {
-                updateStatus('Agent Disconnected');
-                statusOverlay.style.opacity = '1'; // Ensure status is visible when disconnected
+                ipDialogStatusMessage.textContent = 'IP address cannot be empty.';
             }
+        });
+
+        // Allow pressing Enter in the dialog input field
+        ipInputInDialog.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                ipDialogConnectButton.click();
+            }
+        });
+    } else {
+        // Just show it if already created
+        ipDialogStatusMessage.textContent = ''; // Clear previous status
+        ipDialog.classList.remove('hidden');
+    }
+    ipInputInDialog.focus();
+}
+
+
+/**
+ * Updates the connection status message displayed on the UI.
+ * @param {string} message - The message to display.
+ * @param {string} type - 'info', 'success', 'error', 'warning' (for styling).
+ */
+function updateStatus(message, type = 'info') {
+    if (statusMessage) {
+        statusMessage.textContent = message;
+        statusMessage.className = 'text-center text-sm font-medium mb-4';
+        if (type === 'success') {
+            statusMessage.classList.add('text-green-600');
+        } else if (type === 'error') {
+            statusMessage.classList.add('text-red-600');
+        } else if (type === 'warning') {
+            statusMessage.classList.add('text-orange-600');
         } else {
-            console.log('Received message from server:', message);
+            statusMessage.classList.add('text-gray-600');
         }
     }
+}
 
-    // Initiate the WebSocket connection when the entire DOM is loaded
-    window.addEventListener('DOMContentLoaded', connectWebSocket);
+/**
+ * Initiates the WebSocket connection to the server.
+ * @param {string} serverIp - The IP address of the server. Defaults to 'localhost'.
+ */
+function connectWebSocket(serverIp = 'localhost') {
+    const sessionId = sessionIdInput.value.trim();
+    if (!sessionId) {
+        updateStatus('Please enter a session ID.', 'warning');
+        return;
+    }
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+    }
+
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('hidden');
+    }
+    updateStatus('Connecting...', 'info');
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${serverIp}:8080/viewer?sessionId=${sessionId}`;
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        updateStatus('Connected!', 'success');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
+        console.log('WebSocket connected.');
+        ws.send(JSON.stringify({ type: 'viewer_ready', sessionId: sessionId }));
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+
+            if (message.type === 'frame' && message.image) {
+                const img = new Image();
+                img.src = message.image;
+
+                img.onload = () => {
+                    if (!ctx || !remoteScreenCanvas) {
+                        console.error('Canvas context or element not available for drawing.');
+                        return;
+                    }
+
+                    originalWidth = message.width;
+                    originalHeight = message.height;
+
+                    remoteScreenCanvas.width = originalWidth;
+                    remoteScreenCanvas.height = originalHeight;
+
+                    const canvasAspectRatio = remoteScreenCanvas.width / remoteScreenCanvas.height;
+                    const imageAspectRatio = img.width / img.height;
+
+                    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+                    if (imageAspectRatio > canvasAspectRatio) {
+                        drawWidth = remoteScreenCanvas.width;
+                        drawHeight = remoteScreenCanvas.width / imageAspectRatio;
+                        offsetY = (remoteScreenCanvas.height - drawHeight) / 2;
+                    } else {
+                        drawHeight = remoteScreenCanvas.height;
+                        drawWidth = remoteScreenCanvas.height * imageAspectRatio;
+                        offsetX = (remoteScreenCanvas.width - drawWidth) / 2;
+                    }
+
+                    ctx.clearRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
+                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                };
+            } else if (message.type === 'agent_status') {
+                if (message.connected) {
+                    updateStatus('Agent Connected', 'success');
+                } else {
+                    updateStatus('Agent Disconnected', 'warning');
+                }
+            } else {
+                console.log('Received unknown message from server:', message);
+            }
+        } catch (e) {
+            console.error('Error parsing or handling WebSocket message:', e);
+            updateStatus('Error receiving data.', 'error');
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        updateStatus('Connection Error. Check server status or session ID.', 'error');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
+    };
+
+    ws.onclose = () => {
+        updateStatus('Disconnected.', 'info');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
+        console.log('WebSocket disconnected.');
+        // If connection failed (e.g., due to wrong IP), prompt user
+        if (serverIp === 'localhost' && sessionIdInput.value.trim() !== '') {
+            showIpInputDialog(ip => connectWebSocket(ip)); // Recurse with new IP
+        }
+    };
+}
+
+/**
+ * Sends an input event (mouse or keyboard) to the server via WebSocket.
+ */
+function sendInput(inputType, data) {
+    if (ws && ws.readyState === WebSocket.OPEN && originalWidth > 0 && originalHeight > 0 && remoteScreenCanvas) {
+        let scaledData = { ...data };
+
+        if (inputType.startsWith('mouse') || inputType === 'click' || inputType === 'contextmenu' || inputType === 'wheel') {
+            if (data.x !== undefined && data.y !== undefined) {
+                const rect = remoteScreenCanvas.getBoundingClientRect();
+                
+                const canvasAspectRatio = remoteScreenCanvas.width / remoteScreenCanvas.height;
+                const imageAspectRatio = originalWidth / originalHeight;
+
+                let displayedImageWidth, displayedImageHeight;
+                let displayOffsetX = 0, displayOffsetY = 0;
+
+                if (imageAspectRatio > canvasAspectRatio) {
+                    displayedImageWidth = rect.width;
+                    displayedImageHeight = rect.width / imageAspectRatio;
+                    displayOffsetY = (rect.height - displayedImageHeight) / 2;
+                } else {
+                    displayedImageHeight = rect.height;
+                    displayedImageWidth = rect.height * imageAspectRatio;
+                    displayOffsetX = (rect.width - displayedImageWidth) / 2;
+                }
+
+                const clickXRelativeToImage = data.x - rect.left - displayOffsetX;
+                const clickYRelativeToImage = data.y - rect.top - displayOffsetY;
+
+                const scaleX = originalWidth / displayedImageWidth;
+                const scaleY = originalHeight / displayedImageHeight;
+
+                scaledData.x = Math.round(clickXRelativeToImage * scaleX);
+                scaledData.y = Math.round(clickYRelativeToImage * scaleY);
+
+                scaledData.x = Math.max(0, Math.min(scaledData.x, originalWidth - 1));
+                scaledData.y = Math.max(0, Math.min(scaledData.y, originalHeight - 1));
+            }
+        }
+
+        const message = {
+            type: 'input',
+            inputType: inputType,
+            ...scaledData
+        };
+        ws.send(JSON.stringify(message));
+    }
+}
+
+// --- DOMContentLoaded ensures elements are loaded before script tries to access them ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize DOM Elements references
+    connectButton = document.getElementById('connectButton');
+    sessionIdInput = document.getElementById('sessionIdInput');
+    statusMessage = document.getElementById('statusMessage');
+    remoteScreenCanvas = document.getElementById('remoteScreenCanvas');
+    loadingOverlay = document.getElementById('loadingOverlay');
     
+    ctx = remoteScreenCanvas.getContext('2d'); 
+
+    // --- Event Listeners for User Interaction ---
+
+    if (connectButton) {
+        connectButton.addEventListener('click', () => connectWebSocket('localhost')); // Initial attempt with localhost
+    }
+    if (sessionIdInput) {
+        sessionIdInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                connectWebSocket('localhost'); // Initial attempt with localhost
+            }
+        });
+    }
+
+    if (remoteScreenCanvas) {
+        remoteScreenCanvas.addEventListener('mousemove', (e) => sendInput('mousemove', { x: e.clientX, y: e.clientY }));
+        remoteScreenCanvas.addEventListener('mousedown', (e) => sendInput('mousedown', { x: e.clientX, y: e.clientY, button: e.button }));
+        remoteScreenCanvas.addEventListener('mouseup', (e) => sendInput('mouseup', { x: e.clientX, y: e.clientY, button: e.button }));
+        remoteScreenCanvas.addEventListener('click', (e) => sendInput('click', { x: e.clientX, y: e.clientY, button: e.button }));
+        remoteScreenCanvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            sendInput('contextmenu', { x: e.clientX, y: e.clientY, button: e.button });
+        });
+        remoteScreenCanvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            sendInput('wheel', { deltaY: e.deltaY, x: e.clientX, y: e.clientY });
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        sendInput('keydown', {
+            key: e.key,
+            code: e.code,
+            keyCode: e.keyCode,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+        });
+    });
+    document.addEventListener('keyup', (e) => {
+        sendInput('keyup', {
+            key: e.key,
+            code: e.code,
+            keyCode: e.keyCode,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+        });
+    });
+});

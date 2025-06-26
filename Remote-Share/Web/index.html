@@ -4,12 +4,61 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Remote Share Viewer</title>
-    <link rel="stylesheet" href="./style.css">
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Import Google Font - Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Light gray background */
+        }
+        canvas {
+            border: 1px solid #e5e7eb; /* Light border for the canvas */
+            background-color: #000; /* Black background for canvas, visible before first frame */
+            display: block;
+            margin: 0 auto; /* Center the canvas horizontally */
+            border-radius: 0.5rem; /* Rounded corners for aesthetics */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Subtle shadow */
+            /* Ensure canvas fills its container width and maintains aspect ratio for height */
+            width: 100%;
+            height: auto;
+        }
+        .container {
+            max-width: 1024px; /* Max width for the main content area */
+        }
+    </style>
 </head>
-<body>
-    <canvas id="remoteCanvas"></canvas>
-    <img id="screenShareImage" style="max-width: 100%; height: auto; display: block; margin: auto;" alt="Remote Screen Share">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+    <div class="container mx-auto bg-white p-8 rounded-lg shadow-xl">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Remote Share Viewer</h1>
 
+        <div class="mb-6 flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+            <input type="text" id="sessionIdInput" placeholder="Enter Session ID" class="p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
+            <button id="connectButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-md shadow-md transition duration-300 ease-in-out w-full sm:w-auto">
+                Connect
+            </button>
+        </div>
+
+        <div id="statusMessage" class="text-center text-sm font-medium text-gray-600 mb-4">
+            Disconnected. Enter a session ID and click Connect.
+        </div>
+
+        <div class="relative overflow-hidden rounded-lg">
+            <!-- The canvas where the remote screen will be rendered -->
+            <canvas id="remoteScreenCanvas" class="w-full h-auto"></canvas>
+            <!-- Overlay for loading/connecting status -->
+            <div id="loadingOverlay" class="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center text-white text-lg font-semibold rounded-lg hidden">
+                Connecting...
+            </div>
+        </div>
+
+        <div class="mt-6 text-center text-gray-700">
+            <p>Once connected, the remote screen will appear above. You can interact with it using your mouse and keyboard.</p>
+        </div>
+    </div>
+
+    <!-- Link to the JavaScript file -->
     <script src="./script.js"></script>
 </body>
 </html>

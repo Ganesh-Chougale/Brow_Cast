@@ -46,6 +46,7 @@ set(AGENT_SRCS
     src/ImageProcessor.cpp
     src/WebSocketClient.cpp
     src/WindowEnumerator.cpp
+    src/InputInjector.cpp
 )
 
 # Create executable

@@ -1,108 +1,150 @@
-    const express = require('express');
-    const WebSocket = require('ws');
-    const http = require('http');
-    const path = require('path');
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const url = require('url');
+const path = require('path');
+const os = require('os'); // Node.js built-in module for OS-related utility methods
 
-    const app = express();
-    const server = http.createServer(app);
-    const wss = new WebSocket.Server({ server });
+const app = express();
+const server = http.createServer(app);
 
-    const PORT = process.env.PORT || 8080;
+// Serve static files from the 'web' directory, located one level up from 'server'
+app.use(express.static(path.join(__dirname, '../web')));
 
-    // Serve static files from the 'Web' directory
-    app.use(express.static(path.join(__dirname, '../Web')));
+// Create a WebSocket server instance linked to the HTTP server
+const wss = new WebSocket.Server({ server });
 
-    const clients = {
-        agent: null, // Stores the WebSocket connection for the agent
-        viewers: new Set() // Stores a set of WebSocket connections for viewers
-    };
+// Map to store active sessions
+const sessions = new Map();
 
-    wss.on('connection', (ws, req) => {
-        // Determine the type of connection based on the URL path
-        const isAgent = req.url === '/agent';
-        const isViewer = req.url === '/viewer';
-
-        if (isAgent) {
-            console.log('Agent connected');
-            // Ensure only one agent can be connected at a time
-            if (clients.agent && clients.agent.readyState === WebSocket.OPEN) {
-                console.log('Another agent already connected. Closing new agent connection.');
-                ws.close(1008, 'Another agent is already connected.'); // 1008: Policy Violation
-                return;
+/**
+ * Helper function to get the local IP address of the machine.
+ * Filters for IPv4, non-internal addresses.
+ */
+function getLocalIpAddress() {
+    const interfaces = os.networkInterfaces();
+    for (const name in interfaces) {
+        for (const iface of interfaces[name]) {
+            // Skip over internal (i.e. 127.0.0.1) and non-IPv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
             }
-            clients.agent = ws; // Set the current agent connection
-            // Notify all active viewers that the agent is now connected
-            broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: true }));
-
-            // Handle messages coming from the agent (which should be screen frames)
-            ws.on('message', (message) => {
-                broadcastToViewers(message); // Broadcast agent's messages to all viewers
-            });
-
-            ws.on('close', () => {
-                console.log('Agent disconnected');
-                clients.agent = null; // Clear the agent connection on close
-                // Notify viewers that the agent has disconnected
-                broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: false }));
-            });
-
-            ws.on('error', (error) => {
-                console.error('Agent WebSocket error:', error);
-                clients.agent = null; // Clear agent on error as well
-                broadcastToViewers(JSON.stringify({ type: 'agent_status', connected: false }));
-            });
-        } else if (isViewer) {
-            console.log('Viewer connected');
-            clients.viewers.add(ws); // Add the new viewer to the set
-
-            // Inform the newly connected viewer about the current agent's status
-            if (clients.agent && clients.agent.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'agent_status', connected: true }));
-            } else {
-                ws.send(JSON.stringify({ type: 'agent_status', connected: false }));
-            }
-
-            ws.on('close', () => {
-                console.log('Viewer disconnected');
-                clients.viewers.delete(ws); // Remove the viewer from the set on close
-            });
-
-            ws.on('error', (error) => {
-                console.error('Viewer WebSocket error:', error);
-                clients.viewers.delete(ws); // Remove viewer on error
-            });
-        } else {
-            // Log and close connections that don't match expected paths
-            console.log(`Unknown connection attempt from: ${req.url}. Closing.`);
-            ws.close(1000, 'Unknown connection type'); // 1000: Normal Closure
         }
-    });
+    }
+    return 'localhost'; // Fallback to localhost if no suitable IP found
+}
 
-    // Helper function to send a message to all connected viewers
-    function broadcastToViewers(message) {
-        clients.viewers.forEach((viewer) => {
-            if (viewer.readyState === WebSocket.OPEN) {
-                viewer.send(message);
-            }
-        });
+const SERVER_PORT = process.env.PORT || 8080;
+const SERVER_IP_ADDRESS = getLocalIpAddress(); // Get the IP address dynamically
+
+// WebSocket connection handling
+wss.on('connection', (ws, req) => {
+    const parsedUrl = url.parse(req.url, true);
+    const path = parsedUrl.pathname;
+    const sessionId = parsedUrl.query.sessionId;
+
+    if (!sessionId) {
+        console.warn('Connection attempt without sessionId. Closing connection.');
+        ws.close(1008, 'Session ID required');
+        return;
     }
 
-    // Graceful shutdown on SIGINT (Ctrl+C)
-    process.on('SIGINT', () => {
-        console.log('Shutting down server...');
-        if (clients.agent) {
-            clients.agent.close();
-        }
-        clients.viewers.forEach(viewer => viewer.close());
-        server.close(() => {
-            console.log('Server shut down');
-            process.exit(0);
-        });
-    });
+    if (!sessions.has(sessionId)) {
+        sessions.set(sessionId, { agent: null, viewers: new Set() });
+        console.log(`New session created: ${sessionId}`);
+    }
+    const currentSession = sessions.get(sessionId);
 
-    // Start the HTTP and WebSocket server
-    server.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-        console.log(`Web client available at http://localhost:${PORT}/index.html`);
-    });
-    
+    if (path === '/agent') {
+        if (currentSession.agent && currentSession.agent.readyState === WebSocket.OPEN) {
+            console.warn(`Agent already connected for session ${sessionId}. Closing new agent connection.`);
+            ws.close(1008, 'Agent already connected to this session');
+            return;
+        }
+
+        currentSession.agent = ws;
+        console.log(`Agent connected to session: ${sessionId}`);
+
+        currentSession.viewers.forEach(viewerWs => {
+            if (viewerWs.readyState === WebSocket.OPEN) {
+                viewerWs.send(JSON.stringify({ type: 'agent_status', connected: true }));
+            }
+        });
+
+        ws.on('message', message => {
+            currentSession.viewers.forEach(viewerWs => {
+                if (viewerWs.readyState === WebSocket.OPEN) {
+                    viewerWs.send(message.toString());
+                }
+            });
+        });
+
+        ws.on('close', () => {
+            console.log(`Agent disconnected from session: ${sessionId}`);
+            currentSession.agent = null;
+
+            currentSession.viewers.forEach(viewerWs => {
+                if (viewerWs.readyState === WebSocket.OPEN) {
+                    viewerWs.send(JSON.stringify({ type: 'agent_status', connected: false }));
+                }
+            });
+
+            cleanupSessionIfEmpty(sessionId);
+        });
+
+        ws.on('error', error => {
+            console.error(`Agent WebSocket Error for session ${sessionId}:`, error);
+        });
+
+    } else if (path === '/viewer') {
+        currentSession.viewers.add(ws);
+        console.log(`Viewer connected to session: ${sessionId}. Total viewers: ${currentSession.viewers.size}`);
+
+        if (currentSession.agent && currentSession.agent.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'agent_status', connected: true }));
+        } else {
+            ws.send(JSON.stringify({ type: 'agent_status', connected: false }));
+        }
+
+        ws.on('message', message => {
+            const inputMessage = message.toString();
+            if (currentSession.agent && currentSession.agent.readyState === WebSocket.OPEN) {
+                currentSession.agent.send(inputMessage);
+            } else {
+                console.warn(`Received input for session ${sessionId}, but no agent is connected.`);
+            }
+        });
+
+        ws.on('close', () => {
+            currentSession.viewers.delete(ws);
+            console.log(`Viewer disconnected from session: ${sessionId}. Total viewers: ${currentSession.viewers.size}`);
+            
+            cleanupSessionIfEmpty(sessionId);
+        });
+
+        ws.on('error', error => {
+            console.error(`Viewer WebSocket Error for session ${sessionId}:`, error);
+        });
+
+    } else {
+        console.warn(`Unknown connection path: ${path}. Closing connection.`);
+        ws.close(1000, 'Unknown path');
+    }
+});
+
+/**
+ * Cleans up a session from the map if it has no connected agent and no connected viewers.
+ */
+function cleanupSessionIfEmpty(sessionId) {
+    const session = sessions.get(sessionId);
+    if (session && !session.agent && session.viewers.size === 0) {
+        sessions.delete(sessionId);
+        console.log(`Session ${sessionId} cleaned up (no agent or viewers).`);
+    }
+}
+
+// Start the HTTP server
+server.listen(SERVER_PORT, () => {
+    console.log(`Server running on http://${SERVER_IP_ADDRESS}:${SERVER_PORT}`);
+    console.log(`Machine IP: ${SERVER_IP_ADDRESS}`);
+});

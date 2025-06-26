@@ -1,0 +1,13 @@
+body {
+    margin: 0; /* Remove default body margin */
+    overflow: hidden; /* Prevent scrollbars from appearing if content overflows */
+    background-color: #222; /* A dark background for the overall page */
+    font-family: 'Inter', sans-serif; /* Using Inter font */
+}
+
+canvas {
+    display: block; /* Ensures no extra space below the canvas element */
+    background-color: #000; /* Black background for the canvas, makes letterboxing/pillarboxing visible */
+    width: 100%; /* Ensures canvas takes full width of its parent */
+    height: 100%; /* Ensures canvas takes full height of its parent */
+}
