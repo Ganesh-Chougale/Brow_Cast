@@ -3,6 +3,7 @@
 choose windows 64  
 
 2. right after installation the terminal will open
+`mingw64.exe`  
 ```
 pacman -Syu
 pacman -S mingw-w64-x86_64-gcc
