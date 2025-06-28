@@ -3,9 +3,9 @@
 #include "ImageProcessor.h"
 #include "WindowEnumerator.h"
 #include "InputInjector.h" 
-#include <iostream>     // For std::cout, std::cerr, std::cin
-#include <string>       // For std::string
-#include <limits>       // For std::numeric_limits
+#include <iostream>
+#include <string>
+#include <limits>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -13,39 +13,36 @@
 #include <nlohmann/json.hpp>
 
 // Define the default session ID. Ensure it's consistent everywhere.
-const std::string DEFAULT_SESSION_ID = "def_pas"; // Changed to "def_pas"
+const std::string DEFAULT_SESSION_ID = "def_pas";
 const std::string DEFAULT_SERVER_HOST = "localhost"; 
 const std::string SERVER_PORT = "8080";
 
 int main(int argc, char* argv[]) {
     std::string server_host; 
+    CaptureManager captureManager;
+    HWND selected_hwnd = NULL;
+    std::vector<WindowInfo> availableWindows;
 
     // --- Determine Server Host (IP address or hostname) ---
     if (argc > 1) {
-        // Option 1: Server host provided as a command-line argument
         server_host = argv[1]; 
         std::cout << "Using server host from command line: " << server_host << std::endl;
     } else {
-        // Option 2: No command-line argument, prompt user for IP
         std::string user_input_host;
         std::cout << "\n--- Server Connection Setup ---" << std::endl;
         std::cout << "Enter server IP address: ";
         
-        // Clear any previous errors and flush the input buffer
         std::cin.clear();
         std::cin.sync();
-        
-        // Read the input line
         std::getline(std::cin, user_input_host);
         
-        // Trim whitespace from the input
+        // Trim whitespace
         user_input_host.erase(0, user_input_host.find_first_not_of(" \t\n\r\f\v"));
         user_input_host.erase(user_input_host.find_last_not_of(" \t\n\r\f\v") + 1);
 
         if (user_input_host.empty()) {
             server_host = DEFAULT_SERVER_HOST;
             std::cout << "No IP address entered. Connecting to default: " << server_host << std::endl;
-            std::cout << "Note: If Node.js server is on another device, use its actual IP address." << std::endl;
         } else {
             server_host = user_input_host;
             std::cout << "Connecting to: " << server_host << std::endl;
@@ -60,8 +57,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Construct the full server URL for WebSocket connection
-    // Ensure the sessionId matches what the server is expecting from the client (no #).
+    // Construct the WebSocket URL
     std::string server_url = "ws://" + server_host + ":" + SERVER_PORT + "/agent?sessionId=" + DEFAULT_SESSION_ID;
     std::cout << "Attempting to connect to WebSocket server at: " << server_url << std::endl;
 
@@ -78,7 +74,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "WebSocket disconnected from server. Attempting reconnect..." << std::endl; 
     });
 
-    ws_client.setOnMessageHandler([&input_injector](const std::string& message) {
+    ws_client.setOnMessageHandler([&input_injector, &selected_hwnd](const std::string& message) {
         try {
             auto json_msg = nlohmann::json::parse(message);
             std::string type = json_msg.value("type", "");
@@ -86,7 +82,8 @@ int main(int argc, char* argv[]) {
             if (type == "input") {
                 std::string inputType = json_msg.value("inputType", "");
 
-                if (inputType.rfind("mouse", 0) == 0 || inputType == "click" || inputType == "contextmenu" || inputType == "wheel") {
+                if (inputType.rfind("mouse", 0) == 0 || inputType == "click" || 
+                    inputType == "contextmenu" || inputType == "wheel") {
                     int x = json_msg.value("x", 0);
                     int y = json_msg.value("y", 0);
                     int button = json_msg.value("button", -1);
@@ -102,17 +99,20 @@ int main(int argc, char* argv[]) {
                     bool altKey = json_msg.value("altKey", false);
                     bool metaKey = json_msg.value("metaKey", false);
 
-                    input_injector.InjectKeyboardInput(inputType, key, code, ctrlKey, shiftKey, altKey, metaKey);
-                } else {
-                    std::cerr << "Unknown inputType received: " << inputType << std::endl;
+                    input_injector.InjectKeyboardInput(inputType, key, code, 
+                                                     ctrlKey, shiftKey, altKey, metaKey);
                 }
-            } else {
-                std::cout << "Received non-input message from server: " << message << std::endl;
+            } 
+            else if (type == "close_connection") {
+                std::cout << "Received close connection command from viewer." << std::endl;
+                exit(0);
             }
-        } catch (const nlohmann::json::exception& e) {
-            std::cerr << "JSON parsing error for incoming message: " << e.what() << " - Message (truncated): " << message.substr(0, 100) << "..." << std::endl;
+            else if (type == "toggle_fullscreen") {
+                std::cout << "Toggling fullscreen mode." << std::endl;
+                selected_hwnd = NULL;
+            }
         } catch (const std::exception& e) {
-            std::cerr << "Error handling incoming message: " << e.what() << " - Message (truncated): " << message.substr(0, 100) << "..." << std::endl;
+            std::cerr << "Error handling message: " << e.what() << std::endl;
         }
     });
 
@@ -120,11 +120,12 @@ int main(int argc, char* argv[]) {
     try {
         ws_client.connect();
     } catch (const std::exception& e) {
-        std::cerr << "Initial WebSocket connection setup failed: " << e.what() << std::endl;
+        std::cerr << "WebSocket connection failed: " << e.what() << std::endl;
         ImageProcessor::ShutdownCompressor();
         return 1;
     }
 
+    // Wait for connection
     std::cout << "Waiting for WebSocket connection to establish..." << std::endl;
     int connect_timeout_ms = 5000;
     int elapsed_ms = 0;
@@ -134,61 +135,45 @@ int main(int argc, char* argv[]) {
     }
 
     if (!ws_client.isConnected()) {
-        std::cerr << "Failed to connect to WebSocket server within timeout. Ensure Node.js server is running on " << server_url << std::endl;
+        std::cerr << "Failed to connect to WebSocket server." << std::endl;
         ImageProcessor::ShutdownCompressor();
         return 1;
     }
 
-    // --- Screen Capture and Streaming Loop ---
-    CaptureManager captureManager;
-    
-    // Enumerate visible windows and allow user to select one for sharing
-    std::vector<WindowInfo> availableWindows = WindowEnumerator::EnumerateVisibleWindows();
-    
-    // After selecting window, WindowEnumerator::SelectWindowFromList handles clearing cin buffer.
-    // So, we don't need another cin.ignore here.
-    HWND selected_hwnd = WindowEnumerator::SelectWindowFromList(availableWindows);
+    // --- Window Selection ---
+    availableWindows = WindowEnumerator::EnumerateVisibleWindows();
+    selected_hwnd = WindowEnumerator::SelectWindowFromList(availableWindows);
+    std::cout << "Sharing " << (selected_hwnd == NULL ? "full screen" : "selected window") << std::endl;
+    std::cout << "Starting screen sharing (press Ctrl+C to stop)..." << std::endl;
 
-    std::cout << "Sharing " << (selected_hwnd == NULL ? "full screen" : "selected window") << "." << std::endl;
-    std::cout << "Starting screen sharing loop (press Ctrl+C to stop)..." << std::endl;
-
+    // --- Main Capture Loop ---
     while (true) { 
         if (ws_client.isConnected()) {
             int currentWidth = 0, currentHeight = 0;
-            std::vector<uint8_t> pixel_data;
-
-            if (selected_hwnd == NULL) {
-                pixel_data = captureManager.CaptureFullScreen(currentWidth, currentHeight);
-            } else {
-                pixel_data = captureManager.CaptureWindow(selected_hwnd, currentWidth, currentHeight);
-            }
+            std::vector<uint8_t> pixel_data = (selected_hwnd == NULL) ?
+                captureManager.CaptureFullScreen(currentWidth, currentHeight) :
+                captureManager.CaptureWindow(selected_hwnd, currentWidth, currentHeight);
 
             if (!pixel_data.empty() && currentWidth > 0 && currentHeight > 0) {
-                std::vector<uint8_t> jpeg_data = ImageProcessor::CompressToJpeg(pixel_data, currentWidth, currentHeight, 80);
+                std::vector<uint8_t> jpeg_data = ImageProcessor::CompressToJpeg(
+                    pixel_data, currentWidth, currentHeight, 80);
                 
                 if (!jpeg_data.empty()) {
                     std::string base64_image = ImageProcessor::EncodeToBase64(jpeg_data);
-
-                    nlohmann::json frame_msg;
-                    frame_msg["type"] = "frame";
-                    frame_msg["image"] = "data:image/jpeg;base64," + base64_image;
-                    frame_msg["width"] = currentWidth;
-                    frame_msg["height"] = currentHeight;
-
+                    nlohmann::json frame_msg = {
+                        {"type", "frame"},
+                        {"image", "data:image/jpeg;base64," + base64_image},
+                        {"width", currentWidth},
+                        {"height", currentHeight}
+                    };
                     ws_client.send(frame_msg.dump());
-                } else {
-                    std::cerr << "Failed to compress image to JPEG. Skipping frame." << std::endl;
                 }
-            } else {
-                // Keep this commented to avoid excessive console spam for transient issues.
-                // std::cerr << "Failed to capture pixel data or invalid dimensions (width: " << currentWidth << ", height: " << currentHeight << "). Skipping frame." << std::endl;
             }
         } else {
-            std::cerr << "WebSocket not connected. Pausing frame sending and attempting reconnect." << std::endl;
+            std::cerr << "WebSocket disconnected. Attempting to reconnect..." << std::endl;
             std::this_thread::sleep_for(std::chrono::seconds(2));
         }
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(66)); 
+        std::this_thread::sleep_for(std::chrono::milliseconds(33)); // ~30 FPS
     }
 
     ImageProcessor::ShutdownCompressor();

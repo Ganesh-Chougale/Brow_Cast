@@ -144,7 +144,7 @@ function cleanupSessionIfEmpty(sessionId) {
 }
 
 // Start the HTTP server
-server.listen(SERVER_PORT, () => {
+server.listen(SERVER_PORT, '0.0.0.0', () => {
     console.log(`Server running on http://${SERVER_IP_ADDRESS}:${SERVER_PORT}`);
     console.log(`Machine IP: ${SERVER_IP_ADDRESS}`);
 });

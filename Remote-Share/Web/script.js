@@ -4,7 +4,11 @@ let sessionIdInput;
 let statusMessage;
 let remoteScreenCanvas;
 let loadingOverlay;
+let controlButtons;
+let fullScreenButton;
+let disconnectButton;
 let ctx;
+let isFullScreen = false;
 
 // WebSocket Variables
 let ws = null;
@@ -76,7 +80,6 @@ function showIpInputDialog(callback) {
     ipInputInDialog.focus();
 }
 
-
 /**
  * Updates the connection status message displayed on the UI.
  * @param {string} message - The message to display.
@@ -127,6 +130,9 @@ function connectWebSocket(serverIp = 'localhost') {
         updateStatus('Connected!', 'success');
         if (loadingOverlay) {
             loadingOverlay.classList.add('hidden');
+        }
+        if (controlButtons) {
+            controlButtons.classList.remove('hidden');
         }
         console.log('WebSocket connected.');
         ws.send(JSON.stringify({ type: 'viewer_ready', sessionId: sessionId }));
@@ -194,15 +200,7 @@ function connectWebSocket(serverIp = 'localhost') {
     };
 
     ws.onclose = () => {
-        updateStatus('Disconnected.', 'info');
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('hidden');
-        }
-        console.log('WebSocket disconnected.');
-        // If connection failed (e.g., due to wrong IP), prompt user
-        if (serverIp === 'localhost' && sessionIdInput.value.trim() !== '') {
-            showIpInputDialog(ip => connectWebSocket(ip)); // Recurse with new IP
-        }
+        closeConnection();
     };
 }
 
@@ -256,6 +254,77 @@ function sendInput(inputType, data) {
     }
 }
 
+/**
+ * Toggle fullscreen mode for the canvas
+ */
+function toggleFullScreen() {
+    try {
+        if (!document.fullscreenElement) {
+            // Enter fullscreen
+            if (remoteScreenCanvas.requestFullscreen) {
+                remoteScreenCanvas.requestFullscreen();
+            } else if (remoteScreenCanvas.webkitRequestFullscreen) { /* Safari */
+                remoteScreenCanvas.webkitRequestFullscreen();
+            } else if (remoteScreenCanvas.msRequestFullscreen) { /* IE11 */
+                remoteScreenCanvas.msRequestFullscreen();
+            }
+            isFullScreen = true;
+            fullScreenButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Exit Full Screen
+            `;
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) { /* Safari */
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) { /* IE11 */
+                document.msExitFullscreen();
+            }
+            isFullScreen = false;
+            fullScreenButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                Full Screen
+            `;
+        }
+    } catch (e) {
+        console.error('Error toggling fullscreen:', e);
+    }
+}
+
+/**
+ * Close the WebSocket connection and reset UI
+ */
+function closeConnection() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+    }
+    if (controlButtons) {
+        controlButtons.classList.add('hidden');
+    }
+    if (loadingOverlay) {
+        loadingOverlay.classList.add('hidden');
+    }
+    updateStatus('Disconnected', 'info');
+    
+    // Reset canvas
+    if (ctx && remoteScreenCanvas) {
+        ctx.clearRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
+        // Set a default background or message
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Disconnected', remoteScreenCanvas.width / 2, remoteScreenCanvas.height / 2);
+    }
+}
+
 // --- DOMContentLoaded ensures elements are loaded before script tries to access them ---
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize DOM Elements references
@@ -264,8 +333,78 @@ document.addEventListener('DOMContentLoaded', () => {
     statusMessage = document.getElementById('statusMessage');
     remoteScreenCanvas = document.getElementById('remoteScreenCanvas');
     loadingOverlay = document.getElementById('loadingOverlay');
-    
-    ctx = remoteScreenCanvas.getContext('2d'); 
+    controlButtons = document.getElementById('controlButtons');
+    fullScreenButton = document.getElementById('fullScreenButton');
+    disconnectButton = document.getElementById('disconnectButton');
+
+    // Set up canvas context
+    if (remoteScreenCanvas) {
+        ctx = remoteScreenCanvas.getContext('2d');
+        // Set initial canvas size
+        remoteScreenCanvas.width = 800;
+        remoteScreenCanvas.height = 600;
+        
+        // Draw initial message
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for connection...', remoteScreenCanvas.width / 2, remoteScreenCanvas.height / 2);
+    }
+
+    // Add event listeners for control buttons
+    if (fullScreenButton) {
+        fullScreenButton.addEventListener('click', toggleFullScreen);
+    }
+
+    if (disconnectButton) {
+        disconnectButton.addEventListener('click', closeConnection);
+    }
+
+    // Handle keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // F11 for fullscreen
+        if (e.key === 'F11') {
+            e.preventDefault(); // Prevent browser's default F11 behavior
+            toggleFullScreen();
+        }
+        // Escape to exit fullscreen
+        if (e.key === 'Escape' && isFullScreen) {
+            toggleFullScreen();
+        }
+        sendInput('keydown', {
+            key: e.key,
+            code: e.code,
+            keyCode: e.keyCode,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+        });
+    });
+    document.addEventListener('keyup', (e) => {
+        sendInput('keyup', {
+            key: e.key,
+            code: e.code,
+            keyCode: e.keyCode,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+        });
+    });
+
+    // Handle fullscreen change events
+    document.addEventListener('fullscreenchange', () => {
+        isFullScreen = !!document.fullscreenElement;
+    });
+    document.addEventListener('webkitfullscreenchange', () => {
+        isFullScreen = !!document.webkitFullscreenElement;
+    });
+    document.addEventListener('msfullscreenchange', () => {
+        isFullScreen = !!document.msFullscreenElement;
+    });
 
     // --- Event Listeners for User Interaction ---
 
@@ -294,27 +433,4 @@ document.addEventListener('DOMContentLoaded', () => {
             sendInput('wheel', { deltaY: e.deltaY, x: e.clientX, y: e.clientY });
         });
     }
-
-    document.addEventListener('keydown', (e) => {
-        sendInput('keydown', {
-            key: e.key,
-            code: e.code,
-            keyCode: e.keyCode,
-            ctrlKey: e.ctrlKey,
-            shiftKey: e.shiftKey,
-            altKey: e.altKey,
-            metaKey: e.metaKey
-        });
-    });
-    document.addEventListener('keyup', (e) => {
-        sendInput('keyup', {
-            key: e.key,
-            code: e.code,
-            keyCode: e.keyCode,
-            ctrlKey: e.ctrlKey,
-            shiftKey: e.shiftKey,
-            altKey: e.altKey,
-            metaKey: e.metaKey
-        });
-    });
 });
