@@ -34,6 +34,28 @@ function getLocalIpAddress() {
     return 'localhost'; // Fallback to localhost if no suitable IP found
 }
 
+// Function to get all local IP addresses
+function getAllLocalIpAddresses() {
+    const interfaces = os.networkInterfaces();
+    const addresses = [];
+    
+    Object.keys(interfaces).forEach(ifaceName => {
+        interfaces[ifaceName].forEach(iface => {
+            // Skip over internal (i.e. 127.0.0.1) and non-IPv4 addresses
+            if (iface.family === 'IPv4' && !iface.internal) {
+                addresses.push({
+                    name: ifaceName,
+                    address: iface.address,
+                    mac: iface.mac,
+                    internal: iface.internal
+                });
+            }
+        });
+    });
+    
+    return addresses;
+}
+
 const SERVER_PORT = process.env.PORT || 8080;
 const SERVER_IP_ADDRESS = getLocalIpAddress(); // Get the IP address dynamically
 
@@ -145,6 +167,27 @@ function cleanupSessionIfEmpty(sessionId) {
 
 // Start the HTTP server
 server.listen(SERVER_PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://${SERVER_IP_ADDRESS}:${SERVER_PORT}`);
-    console.log(`Machine IP: ${SERVER_IP_ADDRESS}`);
+    const interfaces = getAllLocalIpAddresses();
+    
+    console.log('\n=== Remote Share Server ===');
+    console.log(`\nServer is running on port ${SERVER_PORT}`);
+    console.log('\nAvailable network interfaces:');
+    console.log('----------------------------');
+    
+    // Display localhost URL
+    console.log('Local access:');
+    console.log(`  • http://localhost:${SERVER_PORT}`);
+    
+    // Display network interface URLs
+    if (interfaces.length > 0) {
+        console.log('\nNetwork access:');
+        interfaces.forEach(iface => {
+            console.log(`  • ${iface.name}: http://${iface.address}:${SERVER_PORT}`);
+        });
+    } else {
+        console.log('\nNo network interfaces found. Only localhost access is available.');
+    }
+    
+    console.log('\nTo share your screen, connect the agent and then open any of the above URLs in a browser.');
+    console.log('----------------------------\n');
 });
