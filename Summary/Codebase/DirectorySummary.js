@@ -4,7 +4,7 @@ const path = require('path');
 const depthLevel = 2; // 👈 control how deep to go
 
 const justAMessage = {
-    Change_Depth_Message: "change value of depthLevel to 'Infinity' for max penetration"
+    Change_Depth_Level_Message: "change value of depthLevel to 'Infinity' for max penetration"
 }
 
 const ignoredFolders = [
@@ -78,10 +78,14 @@ function generateFolderStructure(root, selectedDirs) {
                 process.stdout.write(`\rProgress: ${progress}%`);
 
                 if (processedDirs === totalDirs) {
-                    console.log(`\n💾 Writing to zzz.md...`);
-                    const output = `Path: ${dir}\n\`\`\`\n${structure}\`\`\``;
-                    fs.writeFileSync(path.join(root, 'zzz.md'), output);
-                    console.log(`✅ Done! Folder structure saved to zzz.md`);
+                    const scriptDir = __dirname;
+                    const outputDir = path.join(scriptDir, 'ScriptOutput', 'FolderStructure');
+                    const outputPath = path.join(outputDir, 'DirectoryStructure.md');
+
+                    fs.mkdirSync(outputDir, { recursive: true });
+                    console.log(`\n💾 Writing to ${outputPath}...`);
+                    fs.writeFileSync(outputPath, '```\n' + structure + '```');
+                    console.log(`✅ Done! Folder structure saved to DirectoryStructure.md`);
                 }
             }
         }, 0, depthLevel);

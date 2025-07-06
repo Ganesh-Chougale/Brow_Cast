@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 project(RemoteShareAgent CXX)
 
+# Set Windows version definitions before any includes
+add_definitions(-D_WIN32_WINNT=0x0A00)  # Windows 10
+add_definitions(-DNTDDI_VERSION=0x0A000000)  # Windows 10
+add_definitions(-DWINVER=0x0A00)  # Windows 10
+add_definitions(-D_WIN32_IE=0x0A00)  # IE 10.0
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -39,15 +45,14 @@ endif()
 
 find_package(nlohmann_json 3.11.2 REQUIRED)
 
-# Set source files
-set(AGENT_SRCS
-    src/main.cpp
-    src/CaptureManager.cpp
-    src/ImageProcessor.cpp
-    src/WebSocketClient.cpp
-    src/WindowEnumerator.cpp
-    src/InputInjector.cpp
-)
+# Find OpenSSL
+find_package(OpenSSL REQUIRED)
+
+# Set source files using wildcard
+# WARNING: Using file(GLOB) is generally discouraged in CMake for source files
+# as it can lead to issues with dependency tracking and new file detection.
+# Consider listing files explicitly for robust builds.
+file(GLOB AGENT_SRCS "src/*.cpp") 
 
 # Create executable
 add_executable(RemoteShareAgent ${AGENT_SRCS})
@@ -57,8 +62,10 @@ target_include_directories(RemoteShareAgent PRIVATE
     ${Boost_INCLUDE_DIRS}
     ${JPEG_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/libs
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/websocketpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     C:/msys64/mingw64/include
+    ${OPENSSL_INCLUDE_DIRS}
 )
 
 # Link libraries
@@ -67,10 +74,13 @@ target_link_libraries(RemoteShareAgent PRIVATE
     turbojpeg
     ${Boost_LIBRARIES}
     nlohmann_json::nlohmann_json
-    Gdiplus.lib
+    shcore
+    user32
+    gdi32
+    dwmapi
     ws2_32
-    User32.lib
-    Gdi32.lib
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # Add compile definitions if needed

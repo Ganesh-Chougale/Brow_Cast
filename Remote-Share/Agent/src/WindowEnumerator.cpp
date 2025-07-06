@@ -1,4 +1,4 @@
-#include "WindowEnumerator.h" // Include its own header first
+#include "WindowEnumerator.hpp" // Include its own header first
 
 #include <algorithm> // For std::sort
 #include <iostream>  // For std::cout, std::cerr, std::cin

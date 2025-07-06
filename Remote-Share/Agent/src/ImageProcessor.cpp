@@ -1,4 +1,4 @@
-#include "ImageProcessor.h"
+#include "ImageProcessor.hpp"
 #include <iostream>
 #include <stdexcept>
 #include <vector>

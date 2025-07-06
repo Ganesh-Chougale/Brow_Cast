@@ -1,4 +1,3 @@
-// Global variables to be initialized after DOM is ready
 let connectButton;
 let sessionIdInput;
 let statusMessage;
@@ -9,102 +8,101 @@ let fullScreenButton;
 let disconnectButton;
 let ctx;
 let isFullScreen = false;
-
-// WebSocket Variables
 let ws = null;
-let originalWidth = 0; // Stores the original width of the remote screen/window from agent
-let originalHeight = 0; // Stores the original height of the remote screen/window from agent
-
-// Dialog elements for IP input
+let originalWidth = 0; // Stores the original width of the remote screen frame
+let originalHeight = 0; // Stores the original height of the remote screen frame
 let ipDialog;
 let ipInputInDialog;
 let ipDialogConnectButton;
 let ipDialogStatusMessage;
 
-/**
- * Shows a modal dialog to get the server IP from the user.
- * @param {function} callback - Function to call with the entered IP.
- */
+// Function to show the IP input dialog
 function showIpInputDialog(callback) {
     if (!ipDialog) {
-        // Create dialog elements if they don't exist
         ipDialog = document.createElement('div');
         ipDialog.id = 'ipDialog';
-        ipDialog.className = 'fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50';
+        // Bootstrap modal-like styling
+        ipDialog.className = 'modal fade show d-block'; // Use d-block to show immediately, fade for animation
+        ipDialog.setAttribute('tabindex', '-1');
+        ipDialog.setAttribute('aria-labelledby', 'ipDialogLabel');
+        ipDialog.setAttribute('aria-hidden', 'true');
+        ipDialog.style.backgroundColor = 'rgba(0,0,0,0.75)'; // Custom backdrop color
+
         ipDialog.innerHTML = `
-            <div class="bg-white p-6 rounded-lg shadow-xl text-center">
-                <h3 class="text-xl font-bold mb-4 text-gray-800">Enter Server IP Address</h3>
-                <p class="text-sm text-gray-600 mb-4">
-                    The viewer could not connect to 'localhost'. Please enter the IP address of the machine running the Node.js server.
-                    (Check the server's console output for the IP address).
-                </p>
-                <input type="text" id="ipInputInDialog" placeholder="e.g., 192.168.1.100" 
-                       class="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 w-full mb-3">
-                <div id="ipDialogStatusMessage" class="text-sm text-red-600 mb-3"></div>
-                <button id="ipDialogConnectButton" 
-                        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-md transition duration-300 ease-in-out w-full">
-                    Connect to IP
-                </button>
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="ipDialogLabel">Enter Server IP Address</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-3">
+                            The viewer could not connect to 'localhost'. Please enter the IP address of the machine running the Node.js server.
+                            (Check the server's console output for the IP address).
+                        </p>
+                        <input type="text" id="ipInputInDialog" placeholder="e.g., 192.168.1.100" 
+                               class="form-control mb-3">
+                        <div id="ipDialogStatusMessage" class="text-danger small mb-3"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="ipDialogConnectButton" class="btn btn-primary w-100">
+                            Connect to IP
+                        </button>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(ipDialog);
 
-        // Get references to dialog elements
         ipInputInDialog = document.getElementById('ipInputInDialog');
         ipDialogConnectButton = document.getElementById('ipDialogConnectButton');
         ipDialogStatusMessage = document.getElementById('ipDialogStatusMessage');
 
-        // Add event listener for connect button in dialog
         ipDialogConnectButton.addEventListener('click', () => {
             const ip = ipInputInDialog.value.trim();
             if (ip) {
                 ipDialogStatusMessage.textContent = '';
                 callback(ip);
-                ipDialog.classList.add('hidden'); // Hide dialog on successful input
+                ipDialog.classList.remove('d-block'); // Hide the dialog
+                ipDialog.classList.add('d-none');
             } else {
                 ipDialogStatusMessage.textContent = 'IP address cannot be empty.';
             }
         });
 
-        // Allow pressing Enter in the dialog input field
         ipInputInDialog.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
                 ipDialogConnectButton.click();
             }
         });
     } else {
-        // Just show it if already created
-        ipDialogStatusMessage.textContent = ''; // Clear previous status
-        ipDialog.classList.remove('hidden');
+        ipDialogStatusMessage.textContent = '';
+        ipDialog.classList.remove('d-none');
+        ipDialog.classList.add('d-block');
     }
     ipInputInDialog.focus();
 }
 
-/**
- * Updates the connection status message displayed on the UI.
- * @param {string} message - The message to display.
- * @param {string} type - 'info', 'success', 'error', 'warning' (for styling).
- */
+// Function to update status messages
 function updateStatus(message, type = 'info') {
     if (statusMessage) {
         statusMessage.textContent = message;
-        statusMessage.className = 'text-center text-sm font-medium mb-4';
+        // Remove previous Bootstrap text color classes
+        statusMessage.classList.remove('text-success', 'text-danger', 'text-warning', 'text-muted');
+
+        // Add new Bootstrap text color class based on type
         if (type === 'success') {
-            statusMessage.classList.add('text-green-600');
+            statusMessage.classList.add('text-success');
         } else if (type === 'error') {
-            statusMessage.classList.add('text-red-600');
+            statusMessage.classList.add('text-danger');
         } else if (type === 'warning') {
-            statusMessage.classList.add('text-orange-600');
+            statusMessage.classList.add('text-warning');
         } else {
-            statusMessage.classList.add('text-gray-600');
+            statusMessage.classList.add('text-muted'); // Default for 'info'
         }
     }
 }
 
-/**
- * Initiates the WebSocket connection to the server.
- * @param {string} serverIp - The IP address of the server. Defaults to 'localhost'.
- */
+// Function to connect to WebSocket
 function connectWebSocket(serverIp = 'localhost') {
     const sessionId = sessionIdInput.value.trim();
     if (!sessionId) {
@@ -116,23 +114,24 @@ function connectWebSocket(serverIp = 'localhost') {
         ws.close();
     }
 
+    // Show loading overlay using Bootstrap d-none/d-block
     if (loadingOverlay) {
-        loadingOverlay.classList.remove('hidden');
+        loadingOverlay.classList.remove('d-none');
     }
-    updateStatus('Connecting...', 'info');
 
+    updateStatus('Connecting...', 'info');
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${serverIp}:8080/viewer?sessionId=${sessionId}`;
+    const wsUrl = `${protocol}//${serverIp}:8080/viewer?sessionId=${sessionId}`; // Ensure port 8080 or your server's port
 
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         updateStatus('Connected!', 'success');
         if (loadingOverlay) {
-            loadingOverlay.classList.add('hidden');
+            loadingOverlay.classList.add('d-none');
         }
         if (controlButtons) {
-            controlButtons.classList.remove('hidden');
+            controlButtons.classList.remove('d-none');
         }
         console.log('WebSocket connected.');
         ws.send(JSON.stringify({ type: 'viewer_ready', sessionId: sessionId }));
@@ -141,40 +140,31 @@ function connectWebSocket(serverIp = 'localhost') {
     ws.onmessage = (event) => {
         try {
             const message = JSON.parse(event.data);
-
             if (message.type === 'frame' && message.image) {
                 const img = new Image();
                 img.src = message.image;
-
                 img.onload = () => {
                     if (!ctx || !remoteScreenCanvas) {
                         console.error('Canvas context or element not available for drawing.');
                         return;
                     }
 
+                    // Store original dimensions for input scaling
                     originalWidth = message.width;
                     originalHeight = message.height;
 
-                    remoteScreenCanvas.width = originalWidth;
-                    remoteScreenCanvas.height = originalHeight;
+                    // Set the canvas's internal drawing buffer resolution to match the image
+                    // This ensures high-quality drawing and correct aspect ratio for CSS scaling
+                    remoteScreenCanvas.width = img.width;
+                    remoteScreenCanvas.height = img.height;
 
-                    const canvasAspectRatio = remoteScreenCanvas.width / remoteScreenCanvas.height;
-                    const imageAspectRatio = img.width / img.height;
-
-                    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-                    if (imageAspectRatio > canvasAspectRatio) {
-                        drawWidth = remoteScreenCanvas.width;
-                        drawHeight = remoteScreenCanvas.width / imageAspectRatio;
-                        offsetY = (remoteScreenCanvas.height - drawHeight) / 2;
-                    } else {
-                        drawHeight = remoteScreenCanvas.height;
-                        drawWidth = remoteScreenCanvas.height * imageAspectRatio;
-                        offsetX = (remoteScreenCanvas.width - drawWidth) / 2;
-                    }
-
+                    // Clear the canvas before drawing the new frame
                     ctx.clearRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
-                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                    
+                    // Draw the image directly onto the canvas.
+                    // The CSS (width: 100%; height: auto;) will handle the display scaling
+                    // of this high-resolution drawing buffer to fit the parent container.
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
                 };
             } else if (message.type === 'agent_status') {
                 if (message.connected) {
@@ -187,15 +177,19 @@ function connectWebSocket(serverIp = 'localhost') {
             }
         } catch (e) {
             console.error('Error parsing or handling WebSocket message:', e);
-            updateStatus('Error receiving data.', 'error');
+            updateStatus('Error receiving data.', 'danger'); // Changed to 'danger' for error type
         }
     };
 
     ws.onerror = (error) => {
         console.error('WebSocket Error:', error);
-        updateStatus('Connection Error. Check server status or session ID.', 'error');
+        updateStatus('Connection Error. Check server status or session ID.', 'danger');
         if (loadingOverlay) {
-            loadingOverlay.classList.add('hidden');
+            loadingOverlay.classList.add('d-none');
+        }
+        // If connection error, show IP dialog if it was default 'localhost'
+        if (serverIp === 'localhost') {
+            showIpInputDialog(connectWebSocket);
         }
     };
 
@@ -204,47 +198,52 @@ function connectWebSocket(serverIp = 'localhost') {
     };
 }
 
-/**
- * Sends an input event (mouse or keyboard) to the server via WebSocket.
- */
+// Function to send input events (mouse, keyboard) to the agent
 function sendInput(inputType, data) {
     if (ws && ws.readyState === WebSocket.OPEN && originalWidth > 0 && originalHeight > 0 && remoteScreenCanvas) {
         let scaledData = { ...data };
-
         if (inputType.startsWith('mouse') || inputType === 'click' || inputType === 'contextmenu' || inputType === 'wheel') {
             if (data.x !== undefined && data.y !== undefined) {
-                const rect = remoteScreenCanvas.getBoundingClientRect();
-                
-                const canvasAspectRatio = remoteScreenCanvas.width / remoteScreenCanvas.height;
-                const imageAspectRatio = originalWidth / originalHeight;
+                const rect = remoteScreenCanvas.getBoundingClientRect(); // Get canvas's current displayed size
+                const canvasAspectRatio = remoteScreenCanvas.width / remoteScreenCanvas.height; // Internal drawing buffer aspect ratio
+                const imageAspectRatio = originalWidth / originalHeight; // Original captured image aspect ratio
+
+                // The canvas is now always drawn at originalWidth/Height, and CSS scales it.
+                // We need to scale clientX/Y back to the original resolution based on the *displayed* canvas size.
+                // This logic is mostly correct from your original code, as it accounts for letterboxing
+                // if the canvas's *displayed* aspect ratio doesn't match the image's aspect ratio.
 
                 let displayedImageWidth, displayedImageHeight;
                 let displayOffsetX = 0, displayOffsetY = 0;
 
-                if (imageAspectRatio > canvasAspectRatio) {
+                // Calculate the dimensions of the *image as it's displayed within the canvas element's bounds*
+                // This logic correctly handles the "aspect-fit" that CSS now implicitly does for the canvas.
+                if (imageAspectRatio > (rect.width / rect.height)) { // If image is wider than actual display area
                     displayedImageWidth = rect.width;
                     displayedImageHeight = rect.width / imageAspectRatio;
                     displayOffsetY = (rect.height - displayedImageHeight) / 2;
-                } else {
+                } else { // If image is taller than actual display area
                     displayedImageHeight = rect.height;
                     displayedImageWidth = rect.height * imageAspectRatio;
                     displayOffsetX = (rect.width - displayedImageWidth) / 2;
                 }
-
+                
+                // Calculate click position relative to the *displayed image* within the canvas bounds
                 const clickXRelativeToImage = data.x - rect.left - displayOffsetX;
                 const clickYRelativeToImage = data.y - rect.top - displayOffsetY;
 
+                // Scale these relative coordinates back to the original screen resolution
                 const scaleX = originalWidth / displayedImageWidth;
                 const scaleY = originalHeight / displayedImageHeight;
 
                 scaledData.x = Math.round(clickXRelativeToImage * scaleX);
                 scaledData.y = Math.round(clickYRelativeToImage * scaleY);
 
+                // Clamp coordinates to prevent sending out-of-bounds values
                 scaledData.x = Math.max(0, Math.min(scaledData.x, originalWidth - 1));
                 scaledData.y = Math.max(0, Math.min(scaledData.y, originalHeight - 1));
             }
         }
-
         const message = {
             type: 'input',
             inputType: inputType,
@@ -254,80 +253,67 @@ function sendInput(inputType, data) {
     }
 }
 
-/**
- * Toggle fullscreen mode for the canvas
- */
+// Function to toggle full screen mode
 function toggleFullScreen() {
     try {
         if (!document.fullscreenElement) {
-            // Enter fullscreen
             if (remoteScreenCanvas.requestFullscreen) {
                 remoteScreenCanvas.requestFullscreen();
-            } else if (remoteScreenCanvas.webkitRequestFullscreen) { /* Safari */
+            } else if (remoteScreenCanvas.webkitRequestFullscreen) { // Safari
                 remoteScreenCanvas.webkitRequestFullscreen();
-            } else if (remoteScreenCanvas.msRequestFullscreen) { /* IE11 */
+            } else if (remoteScreenCanvas.msRequestFullscreen) { // IE/Edge
                 remoteScreenCanvas.msRequestFullscreen();
             }
             isFullScreen = true;
-            fullScreenButton.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Exit Full Screen
-            `;
+            fullScreenButton.textContent = 'Exit Full Screen';
         } else {
-            // Exit fullscreen
             if (document.exitFullscreen) {
                 document.exitFullscreen();
-            } else if (document.webkitExitFullscreen) { /* Safari */
+            } else if (document.webkitExitFullscreen) { // Safari
                 document.webkitExitFullscreen();
-            } else if (document.msExitFullscreen) { /* IE11 */
+            } else if (document.msExitFullscreen) { // IE/Edge
                 document.msExitFullscreen();
             }
             isFullScreen = false;
-            fullScreenButton.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                </svg>
-                Full Screen
-            `;
+            fullScreenButton.textContent = 'Full Screen';
         }
     } catch (e) {
         console.error('Error toggling fullscreen:', e);
     }
 }
 
-/**
- * Close the WebSocket connection and reset UI
- */
+// Function to close WebSocket connection
 function closeConnection() {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
     }
     if (controlButtons) {
-        controlButtons.classList.add('hidden');
+        controlButtons.classList.add('d-none'); // Hide with Bootstrap class
     }
     if (loadingOverlay) {
-        loadingOverlay.classList.add('hidden');
+        loadingOverlay.classList.add('d-none'); // Hide with Bootstrap class
     }
     updateStatus('Disconnected', 'info');
-    
-    // Reset canvas
+
+    // Clear canvas and draw 'Disconnected' message
     if (ctx && remoteScreenCanvas) {
+        // Reset canvas to a default initial size for the disconnected state
+        remoteScreenCanvas.width = 800; // Example default size
+        remoteScreenCanvas.height = 600; // Example default size
+        
         ctx.clearRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
-        // Set a default background or message
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = '#000000'; // Black background
         ctx.fillRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#ffffff'; // White text
         ctx.font = '16px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('Disconnected', remoteScreenCanvas.width / 2, remoteScreenCanvas.height / 2);
     }
 }
 
-// --- DOMContentLoaded ensures elements are loaded before script tries to access them ---
+// DOMContentLoaded event listener
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize DOM Elements references
+    // Get DOM elements
     connectButton = document.getElementById('connectButton');
     sessionIdInput = document.getElementById('sessionIdInput');
     statusMessage = document.getElementById('statusMessage');
@@ -337,14 +323,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fullScreenButton = document.getElementById('fullScreenButton');
     disconnectButton = document.getElementById('disconnectButton');
 
-    // Set up canvas context
+    // Initialize canvas
     if (remoteScreenCanvas) {
         ctx = remoteScreenCanvas.getContext('2d');
-        // Set initial canvas size
-        remoteScreenCanvas.width = 800;
+        // Set initial canvas drawing buffer size for the 'Waiting for connection...' message
+        remoteScreenCanvas.width = 800; 
         remoteScreenCanvas.height = 600;
-        
-        // Draw initial message
         ctx.fillStyle = '#000000';
         ctx.fillRect(0, 0, remoteScreenCanvas.width, remoteScreenCanvas.height);
         ctx.fillStyle = '#ffffff';
@@ -353,25 +337,25 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText('Waiting for connection...', remoteScreenCanvas.width / 2, remoteScreenCanvas.height / 2);
     }
 
-    // Add event listeners for control buttons
+    // Event Listeners
     if (fullScreenButton) {
         fullScreenButton.addEventListener('click', toggleFullScreen);
     }
-
     if (disconnectButton) {
         disconnectButton.addEventListener('click', closeConnection);
     }
 
-    // Handle keyboard shortcuts
+    // Keyboard events for input and fullscreen
     document.addEventListener('keydown', (e) => {
-        // F11 for fullscreen
         if (e.key === 'F11') {
-            e.preventDefault(); // Prevent browser's default F11 behavior
+            e.preventDefault(); // Prevent default F11 browser behavior
             toggleFullScreen();
         }
-        // Escape to exit fullscreen
+        // Check if Escape key is pressed AND we are in full screen (browser handles exiting fullscreen on Escape, but good to have explicit logic)
+        // Note: Browser usually exits fullscreen automatically on Escape. This is more for updating UI state.
         if (e.key === 'Escape' && isFullScreen) {
-            toggleFullScreen();
+            // toggleFullScreen(); // Calling this might cause double-toggling if browser also acts
+            // Best to let fullscreenchange event update isFullScreen and button text.
         }
         sendInput('keydown', {
             key: e.key,
@@ -383,6 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
             metaKey: e.metaKey
         });
     });
+
     document.addEventListener('keyup', (e) => {
         sendInput('keyup', {
             key: e.key,
@@ -395,41 +380,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Handle fullscreen change events
+    // Fullscreen change events
     document.addEventListener('fullscreenchange', () => {
         isFullScreen = !!document.fullscreenElement;
+        fullScreenButton.textContent = isFullScreen ? 'Exit Full Screen' : 'Full Screen';
     });
     document.addEventListener('webkitfullscreenchange', () => {
         isFullScreen = !!document.webkitFullscreenElement;
+        fullScreenButton.textContent = isFullScreen ? 'Exit Full Screen' : 'Full Screen';
     });
     document.addEventListener('msfullscreenchange', () => {
         isFullScreen = !!document.msFullscreenElement;
+        fullScreenButton.textContent = isFullScreen ? 'Exit Full Screen' : 'Full Screen';
     });
 
-    // --- Event Listeners for User Interaction ---
-
+    // Connect button and session ID input listeners
     if (connectButton) {
-        connectButton.addEventListener('click', () => connectWebSocket('localhost')); // Initial attempt with localhost
+        // Initial connection attempt to localhost, if it fails, the dialog will appear
+        connectButton.addEventListener('click', () => connectWebSocket('localhost'));
     }
     if (sessionIdInput) {
         sessionIdInput.addEventListener('keypress', (event) => {
             if (event.key === 'Enter') {
-                connectWebSocket('localhost'); // Initial attempt with localhost
+                connectWebSocket('localhost');
             }
         });
     }
 
+    // Mouse input listeners for canvas
     if (remoteScreenCanvas) {
         remoteScreenCanvas.addEventListener('mousemove', (e) => sendInput('mousemove', { x: e.clientX, y: e.clientY }));
         remoteScreenCanvas.addEventListener('mousedown', (e) => sendInput('mousedown', { x: e.clientX, y: e.clientY, button: e.button }));
         remoteScreenCanvas.addEventListener('mouseup', (e) => sendInput('mouseup', { x: e.clientX, y: e.clientY, button: e.button }));
         remoteScreenCanvas.addEventListener('click', (e) => sendInput('click', { x: e.clientX, y: e.clientY, button: e.button }));
+        
         remoteScreenCanvas.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
+            e.preventDefault(); // Prevent browser's context menu
             sendInput('contextmenu', { x: e.clientX, y: e.clientY, button: e.button });
         });
+
         remoteScreenCanvas.addEventListener('wheel', (e) => {
-            e.preventDefault();
+            e.preventDefault(); // Prevent page scrolling
             sendInput('wheel', { deltaY: e.deltaY, x: e.clientX, y: e.clientY });
         });
     }

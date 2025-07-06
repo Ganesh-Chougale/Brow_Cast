@@ -1,13 +1,56 @@
+/* Custom CSS for Remote Share Viewer */
 body {
-    margin: 0; /* Remove default body margin */
-    overflow: hidden; /* Prevent scrollbars from appearing if content overflows */
-    background-color: #222; /* A dark background for the overall page */
-    font-family: 'Inter', sans-serif; /* Using Inter font */
+    font-family: 'Inter', sans-serif; /* Already defined in index.html, keeping for clarity */
+    background-color: #f3f4f6; /* Light gray background */
+}
+
+/* Main container for overall layout */
+.main-container {
+    max-width: 1400px; /* Increased max-width to accommodate larger screens */
+    width: 95%; /* Adjust width to fit screen better on smaller devices */
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Wrapper for the canvas to control its dimensions */
+.remote-screen-wrapper {
+    background-color: #000; /* Black background for canvas area */
+    border: 1px solid #dee2e6; /* Bootstrap-like border */
+    border-radius: 0.25rem; /* Bootstrap-like rounded corners */
+    box-shadow: 0 .125rem .25rem rgba(0,0,0,.075); /* Subtle shadow */
+    position: relative; /* Needed for absolute positioning of overlay/buttons */
+    /* Ensure the wrapper respects aspect ratio if you wish, or let canvas dictate */
+    /* This will be mostly controlled by the canvas's own intrinsic aspect ratio */
 }
 
 canvas {
-    display: block; /* Ensures no extra space below the canvas element */
-    background-color: #000; /* Black background for the canvas, makes letterboxing/pillarboxing visible */
-    width: 100%; /* Ensures canvas takes full width of its parent */
-    height: 100%; /* Ensures canvas takes full height of its parent */
+    display: block; /* Remove extra space below canvas */
+    width: 100%; /* Make canvas fill the width of its parent (.remote-screen-wrapper) */
+    height: auto; /* Automatically adjust height to maintain aspect ratio */
+    /* No need for explicit margin auto or border-radius here as parent wrapper handles it visually */
+    /* Clear initial background set in JS if image is coming quickly */
+    background-color: transparent; 
+}
+
+/* Loading overlay styling */
+.loading-overlay {
+    z-index: 10; /* Ensure it's above the canvas */
+}
+
+/* Control buttons styling */
+.control-buttons {
+    z-index: 20; /* Ensure buttons are above overlay and canvas */
+}
+
+/* Adjust Bootstrap form-control width */
+#sessionIdInput {
+    max-width: 300px; /* Limit width of input field for better aesthetics */
+}
+
+/* Custom font import (if not already handled by Bootstrap or system fonts) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Utilities for spacing, similar to Tailwind's space-x */
+.d-flex.space-x-2 > *:not(:last-child) {
+    margin-right: 0.5rem; /* Equivalent to Tailwind's space-x-2 */
 }

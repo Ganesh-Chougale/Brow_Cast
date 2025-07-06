@@ -1,4 +1,4 @@
-#include "CaptureManager.h" 
+#include "CaptureManager.hpp" 
 #include <iostream>      
 #include <stdexcept>     
 #include <algorithm>     
@@ -31,18 +31,36 @@ std::vector<uint8_t> CaptureManager::CapturePixelsInternal(HWND hwnd, int& width
     std::vector<uint8_t> pixels;
     int x_src = 0, y_src = 0; 
     
+    // Get screen DC first to get DPI information
+    hdcScreen = GetDC(NULL);
+    if (!hdcScreen) {
+        std::cerr << "GetDC(NULL) failed. Error: " << GetLastError() << std::endl;
+        return pixels;
+    }
+
+    // Get DPI information
+    const int dpiX = GetDeviceCaps(hdcScreen, LOGPIXELSX);
+    const int dpiY = GetDeviceCaps(hdcScreen, LOGPIXELSY);
+    
     if (hwnd == NULL) { 
-        hdcScreen = GetDC(NULL); 
-        if (!hdcScreen) {
-            std::cerr << "GetDC(NULL) failed. Error: " << GetLastError() << std::endl;
-            return pixels;
+        // For full screen capture, use the virtual screen dimensions
+        width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        
+        // If virtual screen metrics fail, fall back to primary monitor
+        if (width <= 0 || height <= 0) {
+            width = GetSystemMetrics(SM_CXSCREEN);
+            height = GetSystemMetrics(SM_CYSCREEN);
         }
-        width = GetSystemMetrics(SM_CXSCREEN);
-        height = GetSystemMetrics(SM_CYSCREEN);
+        
+        x_src = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        y_src = GetSystemMetrics(SM_YVIRTUALSCREEN);
     } else { 
+        // Window capture logic remains the same
         RECT client_rect;
         if (!GetClientRect(hwnd, &client_rect)) {
             std::cerr << "GetClientRect failed for HWND: " << hwnd << ". Error: " << GetLastError() << std::endl;
+            ReleaseDC(NULL, hdcScreen);
             return pixels; 
         }
         
@@ -75,17 +93,17 @@ std::vector<uint8_t> CaptureManager::CapturePixelsInternal(HWND hwnd, int& width
         }
         
         // Get screen DC for window capture
-        hdcScreen = GetDC(NULL);
-        if (!hdcScreen) {
-            std::cerr << "GetDC(NULL) failed for window capture. Error: " << GetLastError() << std::endl;
-            return pixels;
-        }
+        // hdcScreen = GetDC(NULL);
+        // if (!hdcScreen) {
+        //     std::cerr << "GetDC(NULL) failed for window capture. Error: " << GetLastError() << std::endl;
+        //     return pixels;
+        // }
     }
 
     hdcCompatible = CreateCompatibleDC(hdcScreen);
     if (!hdcCompatible) {
         std::cerr << "CreateCompatibleDC failed! Error: " << GetLastError() << std::endl;
-        if (hdcScreen) ReleaseDC(NULL, hdcScreen); 
+        ReleaseDC(NULL, hdcScreen);
         return pixels;
     }
     
@@ -93,17 +111,20 @@ std::vector<uint8_t> CaptureManager::CapturePixelsInternal(HWND hwnd, int& width
     if (!hBitmap) {
         std::cerr << "CreateCompatibleBitmap failed! Error: " << GetLastError() << std::endl;
         DeleteDC(hdcCompatible);
-        if (hdcScreen) ReleaseDC(NULL, hdcScreen);
+        ReleaseDC(NULL, hdcScreen);
         return pixels;
     }
     
-    SelectObject(hdcCompatible, hBitmap);
+    HGDIOBJ oldBitmap = SelectObject(hdcCompatible, hBitmap);
     
     if (hwnd == NULL) { 
-        // Full screen capture
-        BitBlt(hdcCompatible, 0, 0, width, height, hdcScreen, 0, 0, SRCCOPY);
+        // Full screen capture with DPI awareness
+        SetStretchBltMode(hdcCompatible, COLORONCOLOR);
+        StretchBlt(hdcCompatible, 0, 0, width, height, 
+                  hdcScreen, x_src, y_src, width, height, 
+                  SRCCOPY);
     } else { 
-        // Window capture
+        // Window capture logic remains the same
         BOOL success = PrintWindow(hwnd, hdcCompatible, PW_CLIENTONLY);
         if (!success) {
             std::cerr << "PrintWindow failed for HWND: " << hwnd 

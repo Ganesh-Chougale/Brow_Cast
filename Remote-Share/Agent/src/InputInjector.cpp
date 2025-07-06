@@ -1,4 +1,4 @@
-#include "InputInjector.h"
+#include "InputInjector.hpp"
 #include <iostream>
 
 // Windows API specific includes
